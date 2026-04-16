@@ -1,0 +1,12 @@
+{
+  "checks": [
+    {"type": "agent_status", "expected": "PASS"},
+    {"type": "dom_text", "selector": "#r-full-name", "expected": "Maria Garcia"},
+    {"type": "dom_text", "selector": "#r-email", "expected": "maria@example.org"},
+    {"type": "dom_text", "selector": "#r-city", "expected": "Berlin"},
+    {"type": "dom_text", "selector": "#r-country", "expected": "Germany"},
+    {"type": "dom_text", "selector": "#r-lang", "expected": "Deutsch"},
+    {"type": "dom_text", "selector": "#r-newsletter", "expected": "yes"},
+    {"type": "dom_text_contains", "selector": "#done h2", "value": "All set"}
+  ]
+}

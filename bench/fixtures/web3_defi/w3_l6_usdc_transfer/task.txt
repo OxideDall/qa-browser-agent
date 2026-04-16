@@ -1,0 +1,17 @@
+Transfer 1 USDC to a dead address via ERC-20 transfer on Sepolia.
+
+Steps:
+  1. Click "Connect Wallet". Approve in MetaMask (password if locked:
+     Testpassword1!). Approve network switch to Sepolia if prompted.
+  2. After connecting, the dApp shows your USDC balance. It must be
+     at least 1 USDC.
+  3. Click "Transfer 1 USDC". MetaMask opens a tx popup — confirm.
+  4. Wait for the tx to confirm. tx status goes
+     "sign-pending" → "mining" → "confirmed".
+  5. Outcome box turns green: "SUCCESS — transfer tx 0x..., USDC
+     balance now N.NNN".
+
+Finish with done PASS quoting the outcome. The tx hash (0x...) is the
+key evidence.
+
+If the tx reverts or MetaMask is rejected, done FAIL with a clear reason.

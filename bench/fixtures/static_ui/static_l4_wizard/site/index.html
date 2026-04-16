@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Onboarding wizard</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 640px; margin: 2em auto; padding: 0 1em; }
+  .step { display: none; }
+  .step.active { display: block; }
+  label { display: block; margin: 0.8em 0 0.2em; font-weight: 600; }
+  input[type=text], input[type=email], select { width: 100%; padding: 0.5em; box-sizing: border-box; font-size: 1em; }
+  .btns { margin-top: 1.4em; display: flex; gap: 0.6em; }
+  button { font-size: 1em; padding: 0.6em 1.2em; cursor: pointer; }
+  .step-indicator { margin-bottom: 1em; color: #666; font-size: 0.9em; }
+  #review dl { background: #f8f9fa; padding: 1em; border-radius: 4px; }
+  #review dt { font-weight: 600; margin-top: 0.4em; }
+  #review dd { margin: 0 0 0.4em 0; }
+  #done { display: none; padding: 1em; background: #d4edda; color: #155724; border-radius: 4px; }
+  #done.show { display: block; }
+</style>
+</head>
+<body>
+<h1>Account onboarding</h1>
+
+<div id="step1" class="step active">
+  <div class="step-indicator">Step 1 of 4</div>
+  <h2>Your details</h2>
+  <label for="full-name">Full name</label>
+  <input id="full-name" type="text">
+  <label for="email">Email</label>
+  <input id="email" type="email">
+  <div class="btns"><button id="s1-next" type="button">Next</button></div>
+</div>
+
+<div id="step2" class="step">
+  <div class="step-indicator">Step 2 of 4</div>
+  <h2>Address</h2>
+  <label for="city">City</label>
+  <input id="city" type="text">
+  <label for="country">Country</label>
+  <select id="country">
+    <option value="">— pick —</option>
+    <option>Russia</option>
+    <option>USA</option>
+    <option>Germany</option>
+    <option>Brazil</option>
+  </select>
+  <div class="btns"><button id="s2-back" type="button">Back</button><button id="s2-next" type="button">Next</button></div>
+</div>
+
+<div id="step3" class="step">
+  <div class="step-indicator">Step 3 of 4</div>
+  <h2>Preferences</h2>
+  <label for="lang">Preferred language</label>
+  <select id="lang">
+    <option value="">— pick —</option>
+    <option>English</option>
+    <option>Русский</option>
+    <option>Deutsch</option>
+    <option>Português</option>
+  </select>
+  <label><input id="newsletter" type="checkbox"> Subscribe to newsletter</label>
+  <div class="btns"><button id="s3-back" type="button">Back</button><button id="s3-next" type="button">Next</button></div>
+</div>
+
+<div id="step4" class="step">
+  <div class="step-indicator">Step 4 of 4 — review</div>
+  <h2>Review your details</h2>
+  <div id="review"></div>
+  <div class="btns"><button id="s4-back" type="button">Back</button><button id="s4-confirm" type="button">Confirm</button></div>
+</div>
+
+<div id="done">
+  <h2>All set!</h2>
+  <p>Your onboarding is complete.</p>
+</div>
+
+<script>
+  const state = {};
+  const show = (n) => {
+    for (let i = 1; i <= 4; i++) {
+      document.getElementById('step' + i).classList.toggle('active', i === n);
+    }
+    if (n === 4) {
+      const r = document.getElementById('review');
+      r.innerHTML = `<dl>
+        <dt>Full name</dt><dd id="r-full-name">${state.fullName || ''}</dd>
+        <dt>Email</dt><dd id="r-email">${state.email || ''}</dd>
+        <dt>City</dt><dd id="r-city">${state.city || ''}</dd>
+        <dt>Country</dt><dd id="r-country">${state.country || ''}</dd>
+        <dt>Language</dt><dd id="r-lang">${state.lang || ''}</dd>
+        <dt>Newsletter</dt><dd id="r-newsletter">${state.newsletter ? 'yes' : 'no'}</dd>
+      </dl>`;
+    }
+  };
+  document.getElementById('s1-next').onclick = () => {
+    state.fullName = document.getElementById('full-name').value.trim();
+    state.email = document.getElementById('email').value.trim();
+    if (state.fullName && state.email) show(2);
+  };
+  document.getElementById('s2-back').onclick = () => show(1);
+  document.getElementById('s2-next').onclick = () => {
+    state.city = document.getElementById('city').value.trim();
+    state.country = document.getElementById('country').value;
+    if (state.city && state.country) show(3);
+  };
+  document.getElementById('s3-back').onclick = () => show(2);
+  document.getElementById('s3-next').onclick = () => {
+    state.lang = document.getElementById('lang').value;
+    state.newsletter = document.getElementById('newsletter').checked;
+    if (state.lang) show(4);
+  };
+  document.getElementById('s4-back').onclick = () => show(3);
+  document.getElementById('s4-confirm').onclick = () => {
+    document.getElementById('done').classList.add('show');
+    for (let i = 1; i <= 4; i++) {
+      document.getElementById('step' + i).classList.remove('active');
+    }
+  };
+</script>
+</body>
+</html>

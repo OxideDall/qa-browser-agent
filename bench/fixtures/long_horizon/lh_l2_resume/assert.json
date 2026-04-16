@@ -1,0 +1,9 @@
+{
+  "checks": [
+    {"type": "agent_status", "expected": "PASS"},
+    {"type": "dom_count", "selector": "#list li", "min": 5, "max": 5},
+    {"type": "dom_count", "selector": "#list li.done", "min": 5, "max": 5},
+    {"type": "dom_text", "selector": "#active-count", "expected": "0 items left"},
+    {"type": "dom_text", "selector": "#total-count", "expected": "5 total"}
+  ]
+}

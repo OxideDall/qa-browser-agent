@@ -1,0 +1,15 @@
+[fixture]
+id       = "search_l2_python_lib"
+category = "search_retrieval"
+level    = 2
+title    = "Pick an async Python HTTP client library from a SERP"
+
+[run]
+url         = "https://duckduckgo.com/?q=popular+python+async+http+client+library"
+headless    = true
+max_steps   = 15
+
+[budget]
+max_steps        = 15
+max_tokens       = 60000
+max_wall_seconds = 120

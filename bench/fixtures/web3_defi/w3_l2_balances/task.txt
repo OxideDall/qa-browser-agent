@@ -1,0 +1,11 @@
+This is a multi-chain balance reader. You need to:
+
+  1. Click "Connect Wallet". A MetaMask popup will open.
+  2. INSIDE the MetaMask popup: approve the connection.
+     If MetaMask is locked, unlock with password: Testpassword1!
+  3. Back on the page, verify the status says "connected" and your address is shown.
+  4. Click "Read balances". The page will query public RPCs on your behalf.
+  5. Two balances will appear in the table: Sepolia and Base Sepolia.
+  6. The "Outcome" section will show "SUCCESS — Sepolia: X.XXX ETH, Base Sepolia: Y.YYY ETH".
+
+Finish with done PASS and quote the full SUCCESS outcome text (it contains the two numeric balances — that is your evidence).

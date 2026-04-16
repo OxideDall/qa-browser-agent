@@ -1,0 +1,9 @@
+Register a new account on this page. Use any plausible details:
+
+  Full name: Jane Doe
+  Email:     jane.doe@example.com
+  Password:  TestPassword123!
+  Confirm:   TestPassword123!
+  Terms:     accept
+
+Submit the form. The page should navigate to a success page that says "Welcome aboard!". When you see that, finish with done PASS quoting the welcome text in your description.

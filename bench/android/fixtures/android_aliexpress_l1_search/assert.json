@@ -1,0 +1,7 @@
+{
+  "checks": [
+    {"type": "agent_status", "expected": "PASS"},
+    {"type": "current_package", "expected": "ru.aliexpress.buyer"},
+    {"type": "regex_in_description", "pattern": "Найти\\s+на\\s+AliExpress"}
+  ]
+}

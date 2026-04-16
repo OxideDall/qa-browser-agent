@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Bench — Shopping cart</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 780px; margin: 2em auto; padding: 0 1em; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 0.5em; border-bottom: 1px solid #eee; vertical-align: middle; }
+  button { font-size: 0.95em; padding: 0.25em 0.6em; cursor: pointer; }
+  button.step { width: 1.8em; }
+  .qty { display: inline-block; min-width: 1.5em; text-align: center; font-weight: 600; }
+  .promo-row { margin-top: 1em; display: flex; gap: 0.5em; align-items: center; }
+  #promo-code { font-size: 1em; padding: 0.4em; flex: 0 0 180px; }
+  #summary-line { margin-top: 1em; font-weight: 700; font-size: 1.1em; }
+  .promo-msg { margin-left: 0.5em; font-size: 0.9em; }
+  .promo-msg.ok { color: #245a24; }
+  .promo-msg.err { color: #b00; }
+</style>
+</head>
+<body>
+<h1>Cart</h1>
+
+<table>
+  <thead>
+    <tr><th>Item</th><th>Price</th><th style="width:140px">Qty</th><th style="width:120px">Line total</th><th></th></tr>
+  </thead>
+  <tbody id="lines"></tbody>
+</table>
+
+<div class="promo-row">
+  <input id="promo-code" type="text" placeholder="Promo code">
+  <button id="apply-btn" type="button">Apply</button>
+  <span id="promo-msg" class="promo-msg"></span>
+</div>
+
+<p id="summary-line" data-subtotal="0" data-total="0" data-promo-applied="">Subtotal: 0 ₽</p>
+
+<script>
+  const ITEMS = [
+    { id: 'lens',    name: 'Lens',    price: 3000, qty: 2 },
+    { id: 'tripod',  name: 'Tripod',  price: 4500, qty: 1 },
+    { id: 'battery', name: 'Battery', price:  800, qty: 3 },
+    { id: 'cable',   name: 'Cable',   price:  250, qty: 2 },
+  ];
+  const PROMOS = { 'BENCH10': 0.10, 'BENCH25': 0.25 };
+  let applied = { code: '', discount: 0 };
+
+  function fmt(n) {
+    // "1 234" style with narrow space (U+2009 looks nicer, but use regular space for parity).
+    return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  }
+
+  function render() {
+    const host = document.getElementById('lines');
+    host.innerHTML = '';
+    let subtotal = 0;
+    for (const it of ITEMS) {
+      subtotal += it.price * it.qty;
+      const tr = document.createElement('tr');
+      tr.className = 'line-item';
+      tr.dataset.item = it.id;
+      tr.innerHTML =
+        '<td>' + it.name + '</td>' +
+        '<td>' + fmt(it.price) + ' ₽</td>' +
+        '<td>' +
+          '<button type="button" class="step minus" data-item="' + it.id + '">−</button>' +
+          '<span class="qty">' + it.qty + '</span>' +
+          '<button type="button" class="step plus"  data-item="' + it.id + '">+</button>' +
+        '</td>' +
+        '<td class="line-total">' + fmt(it.price * it.qty) + ' ₽</td>' +
+        '<td><button type="button" class="remove" data-item="' + it.id + '">Remove</button></td>';
+      host.appendChild(tr);
+    }
+    const promoAmount = Math.round(subtotal * applied.discount);
+    const total = subtotal - promoAmount;
+    const sl = document.getElementById('summary-line');
+    sl.dataset.subtotal = subtotal;
+    sl.dataset.total = total;
+    sl.dataset.promoApplied = applied.code;
+    if (applied.code) {
+      sl.textContent = 'Subtotal: ' + fmt(subtotal) + ' ₽ — Promo: −' +
+                       fmt(promoAmount) + ' ₽ — Total: ' + fmt(total) + ' ₽';
+    } else {
+      sl.textContent = 'Subtotal: ' + fmt(subtotal) + ' ₽ — Total: ' + fmt(total) + ' ₽';
+    }
+  }
+
+  document.addEventListener('click', (ev) => {
+    const t = ev.target;
+    const id = t.dataset.item;
+    if (t.classList.contains('minus') && id) {
+      const it = ITEMS.find(x => x.id === id);
+      if (it && it.qty > 1) { it.qty--; render(); }
+      return;
+    }
+    if (t.classList.contains('plus') && id) {
+      const it = ITEMS.find(x => x.id === id);
+      if (it) { it.qty++; render(); }
+      return;
+    }
+    if (t.classList.contains('remove') && id) {
+      const idx = ITEMS.findIndex(x => x.id === id);
+      if (idx !== -1) { ITEMS.splice(idx, 1); render(); }
+      return;
+    }
+    if (t.id === 'apply-btn') {
+      const code = document.getElementById('promo-code').value.trim().toUpperCase();
+      const msg = document.getElementById('promo-msg');
+      if (PROMOS[code] != null) {
+        applied = { code, discount: PROMOS[code] };
+        msg.textContent = 'Applied ' + code + ' (−' + Math.round(PROMOS[code] * 100) + '%)';
+        msg.className = 'promo-msg ok';
+      } else {
+        msg.textContent = 'Unknown promo code';
+        msg.className = 'promo-msg err';
+      }
+      render();
+      return;
+    }
+  });
+
+  render();
+</script>
+</body>
+</html>

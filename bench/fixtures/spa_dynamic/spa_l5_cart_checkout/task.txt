@@ -1,0 +1,30 @@
+Shopping cart page. It's pre-seeded with 4 line items. Your job is to
+bring the cart to a specific state and verify the total.
+
+Starting state:
+
+  1. Lens     — 2 × 3 000 ₽
+  2. Tripod   — 1 × 4 500 ₽
+  3. Battery  — 3 ×   800 ₽
+  4. Cable    — 2 ×   250 ₽
+
+Target state — mutate the cart so that:
+  - Lens     — quantity changes to 1 (use the `−` button once)
+  - Tripod   — stays at 1
+  - Battery  — quantity changes to 2 (one `−` click)
+  - Cable    — REMOVED from the cart entirely (click its "Remove")
+
+Then apply the promo code `BENCH10` in the promo-code input and click
+"Apply". It gives a flat 10% discount on the subtotal.
+
+Math sanity check (for you, not for the page):
+  new subtotal = 3000 + 4500 + 2×800 = 9 100 ₽
+  after −10%   = 8 190 ₽
+The footer `#summary-line` will update live; it will read:
+  "Subtotal: 9 100 ₽ — Promo: −910 ₽ — Total: 8 190 ₽"
+
+Finish with done PASS quoting that summary line verbatim — e.g.
+`done PASS "Subtotal: 9 100 ₽ — Promo: −910 ₽ — Total: 8 190 ₽"`. All
+three prices must appear with `₽`.
+
+If the promo is rejected or the total is wrong, done FAIL.

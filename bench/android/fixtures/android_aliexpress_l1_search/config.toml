@@ -1,0 +1,13 @@
+[fixture]
+id       = "android_aliexpress_l1_search"
+category = "android_marketplace"
+level    = 1
+title    = "AliExpress home → dismiss promo, tap search bar, verify search opens"
+
+[android]
+package = "ru.aliexpress.buyer"
+
+[budget]
+max_steps        = 18
+max_tokens       = 90000
+max_wall_seconds = 200

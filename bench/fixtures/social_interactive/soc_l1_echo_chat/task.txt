@@ -1,0 +1,16 @@
+Chat with the EchoBot. It echoes every message back to you.
+
+Send these THREE messages (in order), and verify each gets echoed:
+
+  1. "hello"
+  2. "how are you"
+  3. "goodbye"
+
+You can press Enter after each message or click the Send button. After
+all three are echoed, the page data-attribute `data-msg-count` on
+`#history` should equal 3, and `data-last-echo` should equal "goodbye".
+
+Finish with done PASS quoting the third echo text verbatim — e.g.
+`done PASS 'BOT echoed: "goodbye"'`. The word "goodbye" IS your evidence.
+
+If the bot stops responding or messages fail to send, done FAIL.

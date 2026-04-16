@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Bench — Register with server-side validation</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 560px; margin: 2em auto; padding: 0 1em; }
+  label { display: block; margin: 0.7em 0 0.2em; font-weight: 600; }
+  input { font-size: 1em; padding: 0.5em; width: 100%; box-sizing: border-box; }
+  button { font-size: 1em; padding: 0.6em 1.2em; margin-top: 1em; cursor: pointer; }
+  .err { color: #b00; font-size: 0.9em; margin-top: 0.2em; min-height: 1.2em; }
+  #success { display: none; margin-top: 1em; padding: 1em; background: #e9fbe9; border: 1px solid #8bc88b; border-radius: 6px; }
+  #success.show { display: block; }
+  code { background: #eee; padding: 0.1em 0.3em; border-radius: 3px; }
+</style>
+</head>
+<body>
+<h1>Create account</h1>
+<form id="register-form" novalidate>
+  <label for="name">Full name</label>
+  <input id="name" type="text" autocomplete="name">
+  <div class="err" id="err-name"></div>
+
+  <label for="email">Email</label>
+  <input id="email" type="email" autocomplete="email">
+  <div class="err" id="err-email"></div>
+
+  <label for="password">Password</label>
+  <input id="password" type="password" autocomplete="new-password">
+  <div class="err" id="err-password"></div>
+
+  <button type="submit">Register</button>
+</form>
+
+<div id="form-state" data-attempts="0" data-last-error="" style="display:none"></div>
+
+<div id="success">
+  <h2>Welcome aboard</h2>
+  <p id="success-name-line">Registered as: <span id="success-name">—</span></p>
+  <p>Email on file: <span id="success-email">—</span></p>
+</div>
+
+<script>
+  // Server-side simulation: this set of emails is "already taken".
+  const TAKEN = new Set([
+    'maria@example.com',
+    'admin@example.com',
+    'test@example.com',
+  ]);
+
+  const formState = document.getElementById('form-state');
+
+  document.getElementById('register-form').addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    const name  = document.getElementById('name').value.trim();
+    const email = document.getElementById('email').value.trim();
+    const pass  = document.getElementById('password').value;
+
+    // Clear errors.
+    for (const id of ['err-name', 'err-email', 'err-password']) {
+      document.getElementById(id).textContent = '';
+    }
+
+    formState.dataset.attempts = String(
+      parseInt(formState.dataset.attempts, 10) + 1,
+    );
+
+    let ok = true;
+    if (!name) {
+      document.getElementById('err-name').textContent = 'Name required';
+      ok = false;
+    }
+    if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+      document.getElementById('err-email').textContent = 'Enter a valid email';
+      ok = false;
+    }
+    if (pass.length < 8) {
+      document.getElementById('err-password').textContent = 'Password must be at least 8 characters';
+      ok = false;
+    }
+    if (!ok) {
+      formState.dataset.lastError = 'client-validation';
+      return;
+    }
+
+    // "Server" check — simulated latency, then verdict.
+    setTimeout(() => {
+      if (TAKEN.has(email.toLowerCase())) {
+        document.getElementById('err-email').textContent = 'Email already in use';
+        formState.dataset.lastError = 'email-taken';
+        return;
+      }
+      document.getElementById('register-form').style.display = 'none';
+      document.getElementById('success-name').textContent  = name;
+      document.getElementById('success-email').textContent = email;
+      document.getElementById('success').classList.add('show');
+      formState.dataset.lastError = '';
+    }, 120);
+  });
+</script>
+</body>
+</html>

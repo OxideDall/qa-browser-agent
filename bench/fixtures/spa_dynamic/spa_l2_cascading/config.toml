@@ -1,0 +1,14 @@
+[fixture]
+id       = "spa_l2_cascading"
+category = "spa_dynamic"
+level    = 2
+title    = "Fill cascading Country/State/City dropdowns and submit"
+
+[run]
+headless    = true
+max_steps   = 15
+
+[budget]
+max_steps        = 15
+max_tokens       = 40000
+max_wall_seconds = 90

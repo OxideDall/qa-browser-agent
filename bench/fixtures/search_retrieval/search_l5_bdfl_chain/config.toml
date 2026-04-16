@@ -1,0 +1,16 @@
+[fixture]
+id       = "search_l5_bdfl_chain"
+category = "search_retrieval"
+level    = 5
+title    = "Find PEP 572 + its Resolution field (mailing-list URL)"
+
+[run]
+url         = "https://duckduckgo.com/?q=python+PEP+walrus+operator+assignment+expressions"
+headless    = true
+max_steps   = 25
+
+[budget]
+max_steps        = 25
+max_tokens       = 120000
+max_wall_seconds = 240
+retries          = 2

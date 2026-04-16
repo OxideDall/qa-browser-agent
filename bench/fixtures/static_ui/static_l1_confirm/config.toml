@@ -1,0 +1,15 @@
+[fixture]
+id       = "static_l1_confirm"
+category = "static_ui"
+level    = 1
+title    = "Click Confirm and verify the toast"
+
+[run]
+# url is left blank; the runner serves site/ on a free port and uses that as base.
+headless    = true
+max_steps   = 5
+
+[budget]
+max_steps        = 5
+max_tokens       = 6000
+max_wall_seconds = 30

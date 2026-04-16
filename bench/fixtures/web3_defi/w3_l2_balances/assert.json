@@ -1,0 +1,9 @@
+{
+  "checks": [
+    {"type": "agent_status", "expected": "PASS"},
+    {"type": "dom_attr", "selector": "#outcome-wrap", "attr": "data-state", "expected": "ok"},
+    {"type": "dom_text_contains", "selector": "#outcome-wrap", "value": "SUCCESS"},
+    {"type": "dom_attr", "selector": "#bal-sepolia", "attr": "data-filled", "expected": "yes"},
+    {"type": "dom_attr", "selector": "#bal-base", "attr": "data-filled", "expected": "yes"}
+  ]
+}

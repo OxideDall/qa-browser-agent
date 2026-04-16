@@ -1,0 +1,14 @@
+[fixture]
+id       = "lh_l1_three_facts"
+category = "long_horizon"
+level    = 1
+title    = "Visit 3 sub-pages; summarise all 3 facts in one done PASS"
+
+[run]
+headless    = true
+max_steps   = 20
+
+[budget]
+max_steps        = 20
+max_tokens       = 80000
+max_wall_seconds = 120

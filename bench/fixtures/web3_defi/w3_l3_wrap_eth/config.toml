@@ -1,0 +1,20 @@
+[fixture]
+id       = "w3_l3_wrap_eth"
+category = "web3_defi"
+level    = 3
+title    = "Real on-chain: wrap 0.01 ETH into WETH on Sepolia"
+
+[run]
+headless    = true
+max_steps   = 30
+extensions  = ["metamask"]
+
+[budget]
+max_steps        = 30
+max_tokens       = 150000
+max_wall_seconds = 300
+
+[network]
+chain_id             = 11155111
+rpc                  = "default"
+required_balance_eth = 0.05

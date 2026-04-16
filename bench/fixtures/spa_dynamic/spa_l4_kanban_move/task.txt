@@ -1,0 +1,29 @@
+This is a kanban board with three columns — "To Do", "Doing", "Done".
+Each card has two buttons: `←` moves it one column left, `→` moves it
+one column right. Buttons are disabled at the edges.
+
+Initial board:
+
+  To Do    : Fix bug #42, Write docs, Review PR
+  Doing    : Deploy staging
+  Done     : (empty)
+
+Your goal:
+
+  To Do    : Write docs, Review PR
+  Doing    : Fix bug #42
+  Done     : Deploy staging
+
+So:
+  - Move `Deploy staging` from Doing to Done (one `→` click).
+  - Move `Fix bug #42` from To Do to Doing (one `→` click).
+
+The footer shows a live status line `Board: todo=N, doing=N, done=N`.
+When the board matches the goal, that line reads:
+`Board: todo=2, doing=1, done=1`.
+
+Finish with done PASS quoting that footer line verbatim — e.g.
+`done PASS 'Board: todo=2, doing=1, done=1'`. The counter numbers ARE
+your evidence.
+
+If any move fails or a card ends up in the wrong column, done FAIL.

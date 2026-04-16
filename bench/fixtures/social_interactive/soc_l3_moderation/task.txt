@@ -1,0 +1,40 @@
+A mini chat UI with moderation. Two messages are pre-seeded:
+
+  m1 (You):   "Initial note — I'll update this shortly."
+  m2 (Alice): "Typo in my last message, please ignore."
+
+Each of your own messages has two buttons: "Edit" and "Delete".
+(Other users' messages are read-only for you.)
+
+Do these three actions in order:
+
+  A. Post a new top-level message with EXACT text:
+       Here's the update: ship in Q2.
+     Use the compose box at the bottom and click "Send".
+
+  B. Edit message `m1` — click its "Edit" button, change the text to
+     EXACTLY:
+       Initial note — updated plan below.
+     Click "Save edit".
+
+  C. Delete the NEW message you just posted in (A) — click its "Delete"
+     button. (Deleting leaves a tombstone "[deleted]".)
+
+A moderation counter at the bottom reads:
+  "Messages: N — edited: X — deleted: Y"
+After your three actions it should read:
+  "Messages: 3 — edited: 1 — deleted: 1"
+(Count includes the tombstone; that's what you want.)
+
+Finish with done PASS that quotes BOTH:
+  1. The counter line verbatim (the "Messages: 3 — edited: 1 — deleted: 1"
+     part).
+  2. The edited body of message m1 verbatim: the text
+     `Initial note — updated plan below.`
+
+Example format:
+  `done PASS 'Messages: 3 — edited: 1 — deleted: 1 | m1 body: Initial
+  note — updated plan below.'`
+
+The edited-body sentence IS your critical evidence. If any action
+rejects or a counter value differs, done FAIL.

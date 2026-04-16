@@ -1,0 +1,16 @@
+[fixture]
+id       = "res_l5_four_labs"
+category = "research_synthesis"
+level    = 5
+title    = "4 AI labs — founding year + HQ country, sort ascending"
+
+[run]
+url         = "https://en.wikipedia.org/wiki/DeepMind"
+headless    = true
+max_steps   = 30
+
+[budget]
+max_steps        = 30
+max_tokens       = 180000
+max_wall_seconds = 300
+retries          = 2

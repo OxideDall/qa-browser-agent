@@ -1,0 +1,14 @@
+[fixture]
+id       = "static_l6_save_resume"
+category = "static_ui"
+level    = 6
+title    = "Save a form draft, reload the page, resume, and submit"
+
+[run]
+headless    = true
+max_steps   = 35
+
+[budget]
+max_steps        = 35
+max_tokens       = 90000
+max_wall_seconds = 200

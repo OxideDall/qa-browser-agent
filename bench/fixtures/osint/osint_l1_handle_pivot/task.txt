@@ -1,0 +1,22 @@
+You're landed on a local forum thread. One of the posts is by a user
+with the handle `@maria_dev`. Your job: find out which company she
+currently works at.
+
+You have NO external access — only local links on this site. The trail
+is:
+
+  1. Forum page — click the `@maria_dev` handle to open her profile.
+  2. Profile page — it lists her bio and a link labeled "Personal site".
+     Follow that link.
+  3. Personal site — the "About" section states her current employer.
+
+Report in a single done PASS description, three things:
+  1. Her handle verbatim: `@maria_dev`.
+  2. Her real name (shown on the profile).
+  3. Her current employer (shown on the personal site about section).
+
+Example format:
+  `done PASS "@maria_dev = Maria K., currently at Helios Analytics"`.
+
+The employer name IS your critical evidence. If any link in the chain
+is broken or the employer can't be found, done FAIL with a clear reason.

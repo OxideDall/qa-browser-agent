@@ -1,0 +1,33 @@
+This page is a multi-field application form with a "Save draft" feature
+that persists to localStorage. Do this in two passes:
+
+Pass 1 — partial fill + save draft:
+  Fill ONLY these fields (leave others empty):
+    Full name:    Maria Garcia
+    Email:        maria@example.com
+    Phone:        +49 151 555 0101
+  Click "Save draft". A yellow banner should appear:
+    "Draft saved at <timestamp>. Resume anytime."
+
+Pass 2 — reload, resume, finish, submit:
+  Reload the page (you can use `goto` with the same URL). The banner
+  should say "Draft found — <N> fields restored" and the three fields
+  you filled should be pre-populated.
+
+  Then fill the remaining required fields:
+    Address:      Alexanderplatz 1, 10178 Berlin
+    Preferred contact: pick "Email" from the dropdown
+    Accept ToS:   check the box
+  Click "Submit application".
+
+A green success screen appears with heading "Application received" and
+two lines:
+  "Applicant: Maria Garcia"
+  "Contact via email: maria@example.com"
+
+Finish with done PASS quoting the "Application received" heading AND
+the contact-via-email line verbatim — e.g.
+`done PASS "Application received — Contact via email: maria@example.com"`.
+
+If draft doesn't restore, submission is rejected, or the success screen
+doesn't appear, done FAIL with a clear reason.

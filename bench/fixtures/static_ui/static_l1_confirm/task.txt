@@ -1,0 +1,1 @@
+Click the "Confirm" button on the page and verify the confirmation toast appears with text "Confirmed!". Once you see the visible toast, finish with done PASS quoting the toast text in your description.

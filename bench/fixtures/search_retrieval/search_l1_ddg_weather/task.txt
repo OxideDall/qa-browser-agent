@@ -1,0 +1,9 @@
+You are on DuckDuckGo search results for the current Moscow weather.
+
+Find a current temperature value on the results page (it may appear in
+the DDG answer widget at the top, or inside the first few organic
+results). Finish with done PASS quoting the temperature — a number
+followed by a unit (e.g. "14°C", "-3°C", "57°F"). That IS your evidence.
+
+If no temperature is visible anywhere on the page, done FAIL with a
+clear reason.

@@ -1,0 +1,14 @@
+[fixture]
+id       = "static_l7_wizard_cond"
+category = "static_ui"
+level    = 7
+title    = "Wizard with conditional branching (Free vs Pro path)"
+
+[run]
+headless    = true
+max_steps   = 35
+
+[budget]
+max_steps        = 35
+max_tokens       = 100000
+max_wall_seconds = 220

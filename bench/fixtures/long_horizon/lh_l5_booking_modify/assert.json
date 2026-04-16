@@ -1,0 +1,11 @@
+{
+  "checks": [
+    {"type": "agent_status", "expected": "PASS"},
+    {"type": "dom_text_contains", "selector": "#refund h2", "value": "Refund issued"},
+    {"type": "dom_text", "selector": "#refund-ref", "expected": "BK-260615"},
+    {"type": "dom_text", "selector": "#refund-status", "expected": "CANCELLED"},
+    {"type": "dom_attr", "selector": "#refund-amount", "attr": "data-amount", "expected": "2520"},
+    {"type": "dom_attr", "selector": "#refund-amount", "attr": "data-fee", "expected": "280"},
+    {"type": "dom_attr", "selector": "#refund-amount", "attr": "data-ticket", "expected": "2800"}
+  ]
+}

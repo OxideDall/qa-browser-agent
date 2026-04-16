@@ -1,0 +1,14 @@
+You are on an index page that links to three sub-pages, each with one
+fact (geography, programming, physics).
+
+Visit every sub-page to read its fact, then summarise all THREE facts
+in a single done PASS description. Example format:
+
+  done PASS "Paris is the capital of France; Python was created by
+  Guido van Rossum in 1991; the speed of light is 299,792,458 m/s"
+
+Your description must mention each of the three topics' key facts —
+miss any one and the assert fails.
+
+If a sub-page fails to load or the content is missing, done FAIL with
+a clear reason.

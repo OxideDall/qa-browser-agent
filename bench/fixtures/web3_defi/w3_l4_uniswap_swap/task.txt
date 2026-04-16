@@ -1,0 +1,18 @@
+Swap 0.01 WETH → USDC on Sepolia via Uniswap V3. Two transactions total.
+
+Steps:
+  1. Click "Connect Wallet". In MetaMask: approve the connection and, if
+     prompted, approve the network switch to Sepolia.
+     Password if MM is locked: Testpassword1!
+  2. After connecting, the dApp shows your WETH balance (must be ≥ 0.01)
+     and current router allowance (probably 0).
+  3. Click "Approve 0.01 WETH". MetaMask opens a tx-approval popup —
+     confirm it. Wait until approve tx status = "confirmed".
+  4. Click "Swap 0.01 WETH → USDC". MetaMask opens another popup — confirm.
+     Wait until swap tx status = "confirmed".
+  5. The "Outcome" section will go green: "SUCCESS — swap tx 0x...,
+     USDC balance now N.NNN".
+
+Finish with done PASS quoting the outcome. The swap tx hash (0x...) is
+the critical evidence. If either transaction reverts, use done FAIL with
+a clear reason.

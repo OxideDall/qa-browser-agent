@@ -1,0 +1,18 @@
+Execute a 3-transaction DeFi combo on Sepolia: wrap ETH → approve WETH
+→ swap WETH to USDC. All three transactions must be signed in MetaMask
+one after another.
+
+Steps:
+  1. Click "Connect Wallet". Approve in MetaMask. Switch to Sepolia
+     if prompted. MM password if locked: Testpassword1!
+  2. Click "Wrap 0.005 ETH". Confirm in MetaMask. Wait for mining.
+  3. Click "Approve 0.005 WETH". Confirm in MetaMask. Wait for mining.
+  4. Click "Swap 0.005 WETH → USDC". Confirm in MetaMask. Wait for
+     mining.
+  5. Verify the outcome section turns green: "SUCCESS — combo complete.
+     swap tx 0x..., USDC balance now N.NNN".
+
+Finish with done PASS quoting the outcome. The swap tx hash (0x...) is
+the critical evidence.
+
+If any tx reverts or MM is rejected, done FAIL with a clear reason.

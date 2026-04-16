@@ -1,0 +1,15 @@
+[fixture]
+id       = "soc_l2_threaded"
+category = "social_interactive"
+level    = 2
+title    = "Reply to an existing thread + start a new thread"
+
+[run]
+headless    = true
+max_steps   = 25
+init_script = "init.js"
+
+[budget]
+max_steps        = 25
+max_tokens       = 70000
+max_wall_seconds = 180

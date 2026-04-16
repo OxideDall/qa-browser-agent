@@ -1,0 +1,14 @@
+[fixture]
+id       = "static_l2_register"
+category = "static_ui"
+level    = 2
+title    = "Fill registration form and reach success page"
+
+[run]
+headless    = true
+max_steps   = 12
+
+[budget]
+max_steps        = 12
+max_tokens       = 20000
+max_wall_seconds = 60

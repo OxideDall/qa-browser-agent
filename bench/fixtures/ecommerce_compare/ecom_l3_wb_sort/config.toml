@@ -1,0 +1,16 @@
+[fixture]
+id       = "ecom_l3_wb_sort"
+category = "ecommerce_compare"
+level    = 3
+title    = "Wildberries sorted asc: report the cheapest power-bank price"
+
+[run]
+url         = "https://www.wildberries.ru/catalog/0/search.aspx?search=%D0%B2%D0%BD%D0%B5%D1%88%D0%BD%D0%B8%D0%B9+%D0%B0%D0%BA%D0%BA%D1%83%D0%BC%D1%83%D0%BB%D1%8F%D1%82%D0%BE%D1%80&sort=priceup"
+headless    = true
+max_steps   = 15
+
+[budget]
+max_steps        = 15
+max_tokens       = 60000
+max_wall_seconds = 120
+retries          = 2

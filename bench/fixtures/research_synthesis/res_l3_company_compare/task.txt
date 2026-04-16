@@ -1,0 +1,15 @@
+You are on the Anthropic Wikipedia page.
+
+Compare Anthropic's founding year with OpenAI's. OpenAI's Wikipedia
+article is at https://en.wikipedia.org/wiki/OpenAI — you will need to
+navigate there (use `goto`) to read that year.
+
+Report in a single done PASS description:
+  1. Anthropic's founding year
+  2. OpenAI's founding year
+  3. Which company was founded FIRST (earlier)
+
+Example format: `done PASS "Anthropic 2021, OpenAI 2015 — OpenAI founded first"`.
+
+Both years AND the name of the earlier company must appear in your
+description. If either page fails to load, done FAIL with a clear reason.

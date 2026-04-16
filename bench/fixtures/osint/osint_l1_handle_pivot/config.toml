@@ -1,0 +1,14 @@
+[fixture]
+id       = "osint_l1_handle_pivot"
+category = "osint"
+level    = 1
+title    = "Pivot handle → profile → personal site to find current employer"
+
+[run]
+headless    = true
+max_steps   = 20
+
+[budget]
+max_steps        = 20
+max_tokens       = 60000
+max_wall_seconds = 150

@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Bench dApp — Connect & Sign</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 640px; margin: 2em auto; padding: 0 1em; }
+  button { font-size: 1em; padding: 0.7em 1.4em; cursor: pointer; margin: 0.4em 0.4em 0.4em 0; }
+  .box { border: 1px solid #ddd; border-radius: 6px; padding: 1em; margin: 1em 0; background: #f8f9fa; }
+  .status { font-weight: 600; }
+  .ok { color: #155724; }
+  .err { color: #b00; }
+  code { word-break: break-all; background: #eee; padding: 0.1em 0.4em; border-radius: 3px; }
+</style>
+</head>
+<body>
+<h1>Bench dApp</h1>
+<p>Minimal dApp for the QA agent web3 bench. Connect your wallet, then sign the standard test message.</p>
+
+<div class="box">
+  <h2>Step 1 — Connect wallet</h2>
+  <button id="connect-btn" type="button">Connect Wallet</button>
+  <div>Status: <span id="conn-status" class="status" data-state="disconnected">not connected</span></div>
+  <div>Address: <code id="addr">—</code></div>
+  <div>Chain ID: <code id="chain-id">—</code></div>
+</div>
+
+<div class="box">
+  <h2>Step 2 — Sign message</h2>
+  <p>Message to sign: <code id="msg-text">QA-Bench L1 connect+sign probe</code></p>
+  <button id="sign-btn" type="button" disabled>Sign Message</button>
+  <div>Status: <span id="sign-status" class="status" data-state="idle">idle</span></div>
+  <div>Signature: <code id="sig">—</code></div>
+</div>
+
+<div class="box">
+  <h2>Step 3 — Outcome</h2>
+  <div id="outcome-wrap" data-state="pending" class="status" style="font-size: 1.2em;">
+    <span id="outcome">waiting…</span>
+  </div>
+</div>
+
+<script>
+  const MSG = 'QA-Bench L1 connect+sign probe';
+  const connBtn = document.getElementById('connect-btn');
+  const signBtn = document.getElementById('sign-btn');
+  let account = null;
+
+  function setOutcome(state, text) {
+    const wrap = document.getElementById('outcome-wrap');
+    wrap.dataset.state = state;
+    wrap.className = 'status ' + (state === 'ok' ? 'ok' : state === 'err' ? 'err' : '');
+    document.getElementById('outcome').textContent = text;
+  }
+
+  connBtn.addEventListener('click', async () => {
+    if (!window.ethereum) {
+      setOutcome('err', 'window.ethereum not injected — MetaMask is missing');
+      return;
+    }
+    try {
+      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+      account = accounts[0];
+      document.getElementById('addr').textContent = account;
+      document.getElementById('conn-status').textContent = 'connected';
+      document.getElementById('conn-status').dataset.state = 'connected';
+      document.getElementById('conn-status').className = 'status ok';
+      const chainHex = await window.ethereum.request({ method: 'eth_chainId' });
+      document.getElementById('chain-id').textContent = chainHex + ' (' + parseInt(chainHex, 16) + ')';
+      signBtn.disabled = false;
+    } catch (e) {
+      setOutcome('err', 'connect rejected: ' + (e && e.message || e));
+    }
+  });
+
+  signBtn.addEventListener('click', async () => {
+    if (!account) return;
+    try {
+      const sig = await window.ethereum.request({
+        method: 'personal_sign',
+        params: [MSG, account],
+      });
+      document.getElementById('sig').textContent = sig;
+      document.getElementById('sign-status').textContent = 'signed';
+      document.getElementById('sign-status').dataset.state = 'signed';
+      document.getElementById('sign-status').className = 'status ok';
+      setOutcome('ok', 'SUCCESS — signature received: ' + sig.slice(0, 18) + '…');
+    } catch (e) {
+      setOutcome('err', 'signing rejected: ' + (e && e.message || e));
+    }
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+Find the name of Anthropic's CEO from the Wikipedia article about the company.
+
+The page is already loaded. Scroll or scan the content and identify the
+current CEO's full name. Finish with done PASS quoting the full name
+verbatim (first + last name) — that IS your evidence. If the CEO is not
+named on the page, done FAIL with a clear reason.

@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Bench — Chat with moderation</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 680px; margin: 2em auto; padding: 0 1em; }
+  .msg { border: 1px solid #ddd; border-radius: 6px; padding: 0.6em 0.9em; margin: 0.5em 0; background: #fafbfc; }
+  .msg.deleted { color: #888; font-style: italic; background: #f0f0f0; }
+  .msg.edited .body:after { content: " (edited)"; color: #888; font-size: 0.85em; }
+  .author { color: #666; font-size: 0.88em; margin-bottom: 0.2em; }
+  .controls { margin-top: 0.4em; }
+  button { font-size: 0.88em; padding: 0.25em 0.6em; cursor: pointer; margin-right: 0.3em; }
+  #composer { margin-top: 1em; display: flex; gap: 0.4em; }
+  #composer textarea { flex: 1; font-size: 1em; padding: 0.5em; font-family: inherit; min-height: 2em; }
+  #composer button { padding: 0.5em 1em; }
+  #mod-counter { margin-top: 1em; font-weight: 700; }
+  .edit-row { margin-top: 0.4em; display: flex; gap: 0.4em; }
+  .edit-row input { flex: 1; font-size: 1em; padding: 0.4em; }
+</style>
+</head>
+<body>
+<h1>Chat</h1>
+
+<section id="messages"></section>
+
+<form id="composer">
+  <textarea id="new-msg" placeholder="Write a message…"></textarea>
+  <button type="submit">Send</button>
+</form>
+
+<p id="mod-counter">Messages: 0 — edited: 0 — deleted: 0</p>
+
+<script>
+  const state = {
+    msgs: (window.__SEED_MSGS__ || []).map(m => ({ ...m })),
+    me: 'You',
+  };
+
+  function nextId() {
+    let n = state.msgs.length + 1;
+    while (state.msgs.find(m => m.id === 'm' + n)) n++;
+    return 'm' + n;
+  }
+
+  function render() {
+    const host = document.getElementById('messages');
+    host.innerHTML = '';
+    let edited = 0, deleted = 0;
+    for (const m of state.msgs) {
+      if (m.edited) edited++;
+      if (m.deleted) deleted++;
+      const el = document.createElement('div');
+      el.className = 'msg' +
+        (m.edited  ? ' edited'  : '') +
+        (m.deleted ? ' deleted' : '');
+      el.dataset.id = m.id;
+      const mine = m.author === state.me;
+      const bodyText = m.deleted ? '[deleted]' : m.text;
+      el.innerHTML =
+        '<div class="author">' + m.author + '</div>' +
+        '<div class="body">' + bodyText + '</div>' +
+        (mine && !m.deleted ?
+          '<div class="controls">' +
+            '<button type="button" class="edit" data-id="' + m.id + '">Edit</button>' +
+            '<button type="button" class="delete" data-id="' + m.id + '">Delete</button>' +
+          '</div>' : '');
+      host.appendChild(el);
+    }
+    document.getElementById('mod-counter').textContent =
+      'Messages: ' + state.msgs.length + ' — edited: ' + edited + ' — deleted: ' + deleted;
+  }
+
+  document.getElementById('composer').addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    const ta = document.getElementById('new-msg');
+    const text = ta.value.trim();
+    if (!text) return;
+    state.msgs.push({ id: nextId(), author: state.me, text, edited: false, deleted: false });
+    ta.value = '';
+    render();
+  });
+
+  document.addEventListener('click', (ev) => {
+    const t = ev.target;
+    const id = t.dataset.id;
+    if (t.classList.contains('edit') && id) {
+      const row = document.querySelector('[data-id="' + id + '"]');
+      if (!row || row.querySelector('.edit-row')) return;
+      const body = row.querySelector('.body');
+      const current = body.textContent.replace(/ \(edited\)$/, '');
+      const editRow = document.createElement('div');
+      editRow.className = 'edit-row';
+      editRow.innerHTML =
+        '<input type="text" class="edit-input" value="' + current.replace(/"/g, '&quot;') + '">' +
+        '<button type="button" class="save-edit" data-id="' + id + '">Save edit</button>' +
+        '<button type="button" class="cancel-edit">Cancel</button>';
+      row.appendChild(editRow);
+      editRow.querySelector('input').focus();
+      return;
+    }
+    if (t.classList.contains('save-edit') && id) {
+      const row = document.querySelector('[data-id="' + id + '"]');
+      const input = row.querySelector('.edit-input');
+      const text = input.value.trim();
+      if (!text) return;
+      const m = state.msgs.find(x => x.id === id);
+      if (!m) return;
+      m.text = text; m.edited = true;
+      render();
+      return;
+    }
+    if (t.classList.contains('cancel-edit')) {
+      const row = t.closest('.msg');
+      const editRow = row.querySelector('.edit-row');
+      if (editRow) editRow.remove();
+      return;
+    }
+    if (t.classList.contains('delete') && id) {
+      const m = state.msgs.find(x => x.id === id);
+      if (!m) return;
+      m.deleted = true;
+      render();
+      return;
+    }
+  });
+
+  render();
+</script>
+</body>
+</html>

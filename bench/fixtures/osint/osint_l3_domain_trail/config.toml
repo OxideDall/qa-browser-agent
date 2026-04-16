@@ -1,0 +1,14 @@
+[fixture]
+id       = "osint_l3_domain_trail"
+category = "osint"
+level    = 3
+title    = "Domain lookup → WHOIS → GitHub org — chain 3 sources for a count"
+
+[run]
+headless    = true
+max_steps   = 25
+
+[budget]
+max_steps        = 25
+max_tokens       = 80000
+max_wall_seconds = 200

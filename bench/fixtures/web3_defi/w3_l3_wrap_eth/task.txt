@@ -1,0 +1,20 @@
+Wrap 0.01 Sepolia ETH into WETH using this dApp.
+
+Steps:
+  1. Click "Connect Wallet". In MetaMask: approve the connection, and if
+     prompted, approve the network switch to Sepolia.
+     Password if MM is locked: Testpassword1!
+  2. After connecting, the dApp will show your ETH balance and WETH balance
+     (probably 0 WETH).
+  3. Click "Wrap 0.01 ETH". MetaMask opens a transaction-approval popup.
+     Approve / Confirm the transaction in the MetaMask popup.
+  4. Wait. The dApp will update:
+       tx status = "mining" → "confirmed"
+       tx hash = 0x... (a 66-char hex string starting with 0x)
+       WETH balance = 0.01 or slightly more
+  5. The "Outcome" section will show green: "SUCCESS — wrapped 0.01 ETH,
+     tx 0x..., WETH balance now 0.01…"
+
+Finish with done PASS quoting the outcome text — the tx hash (0x...) is
+the critical evidence. If the transaction reverts or MetaMask is rejected,
+use done FAIL with a clear reason.

@@ -1,0 +1,15 @@
+[fixture]
+id       = "res_l3_company_compare"
+category = "research_synthesis"
+level    = 3
+title    = "Compare Anthropic vs OpenAI founding years, pick the earlier"
+
+[run]
+url         = "https://en.wikipedia.org/wiki/Anthropic"
+headless    = true
+max_steps   = 20
+
+[budget]
+max_steps        = 20
+max_tokens       = 100000
+max_wall_seconds = 180

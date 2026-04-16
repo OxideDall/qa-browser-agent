@@ -1,0 +1,22 @@
+Bridge 0.001 ETH from Sepolia to Base Sepolia via the official Base
+L1StandardBridge contract.
+
+Steps:
+  1. Click "Connect Wallet". In MetaMask: approve the connection, and if
+     prompted, approve the network switch to Sepolia.
+     Password if MM is locked: Testpassword1!
+  2. After connecting, the dApp shows your Sepolia ETH balance. It must
+     be at least ~0.006 ETH (0.001 for the bridge + gas).
+  3. Click "Bridge 0.001 ETH". MetaMask opens a tx-approval popup —
+     confirm it.
+  4. Wait for the L1 tx to confirm. tx status will go
+     "sign-pending" → "mining" → "confirmed".
+  5. The "Outcome" section turns green: "SUCCESS — L1 bridge tx 0x...
+     confirmed; deposited 0.001 ETH to Base Sepolia".
+
+Finish with done PASS quoting the outcome. The L1 tx hash (0x...) is
+the critical evidence. The L2 credit to Base Sepolia happens
+asynchronously and is verified by the fixture's on-chain assert — you
+don't have to wait for it inside the dApp.
+
+If the tx reverts or MetaMask is rejected, done FAIL with a clear reason.

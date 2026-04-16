@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Bench — Train booking flow</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 680px; margin: 2em auto; padding: 0 1em; }
+  section { display: none; }
+  section.active { display: block; }
+  label { display: block; margin: 0.6em 0 0.2em; font-weight: 600; }
+  input, select { font-size: 1em; padding: 0.45em; width: 100%; box-sizing: border-box; }
+  button { font-size: 1em; padding: 0.55em 1.1em; cursor: pointer; margin-top: 1em; }
+  .err { color: #b00; font-size: 0.9em; min-height: 1.2em; }
+  .progress { color: #666; font-size: 0.85em; margin-bottom: 0.5em; }
+  .seat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.4em; margin-top: 0.5em; }
+  .seat { padding: 0.6em 0.4em; text-align: center; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; background: #f8f8f8; }
+  .seat.unavail { background: #eaeaea; color: #aaa; cursor: not-allowed; }
+  .seat.selected { background: #cfe9d0; border-color: #4a9f4b; font-weight: 700; }
+  #confirm { background: #e9fbe9; border: 1px solid #8bc88b; padding: 1em; border-radius: 6px; }
+</style>
+</head>
+<body>
+
+<section id="route" class="active">
+  <p class="progress">Step 1 of 6 — Route</p>
+  <h2>Choose your route</h2>
+  <label for="from">From</label>
+  <select id="from">
+    <option value="">— select —</option>
+    <option>Moscow</option><option>Kazan</option><option>Sochi</option>
+    <option>Yekaterinburg</option>
+  </select>
+  <label for="to">To</label>
+  <select id="to">
+    <option value="">— select —</option>
+    <option>Saint Petersburg</option><option>Vladivostok</option>
+    <option>Novosibirsk</option><option>Rostov</option>
+  </select>
+  <label for="class">Class</label>
+  <select id="class">
+    <option value="">— select —</option>
+    <option>Economy</option><option>Business</option><option>First</option>
+  </select>
+  <div class="err" id="err-route"></div>
+  <button type="button" id="btn-route">Next: date</button>
+</section>
+
+<section id="date">
+  <p class="progress">Step 2 of 6 — Date</p>
+  <h2>Choose travel date</h2>
+  <label for="travel-date">Date (YYYY-MM-DD)</label>
+  <input id="travel-date" type="text" placeholder="2026-05-01" pattern="\d{4}-\d{2}-\d{2}">
+  <div class="err" id="err-date"></div>
+  <button type="button" id="btn-date">Next: seat</button>
+</section>
+
+<section id="seat">
+  <p class="progress">Step 3 of 6 — Seat</p>
+  <h2>Pick your seat</h2>
+  <p>Click an available seat. Dimmed seats are already taken.</p>
+  <div class="seat-grid" id="seat-grid"></div>
+  <p>Selected: <code id="seat-chosen">—</code></p>
+  <div class="err" id="err-seat"></div>
+  <button type="button" id="btn-seat">Next: passenger</button>
+</section>
+
+<section id="passenger">
+  <p class="progress">Step 4 of 6 — Passenger details</p>
+  <h2>Who's travelling?</h2>
+  <label for="pax-name">Full name</label>
+  <input id="pax-name" type="text" autocomplete="name">
+  <label for="pax-email">Email</label>
+  <input id="pax-email" type="email" autocomplete="email">
+  <label for="pax-phone">Phone</label>
+  <input id="pax-phone" type="tel" autocomplete="tel">
+  <div class="err" id="err-pax"></div>
+  <button type="button" id="btn-pax">Next: payment</button>
+</section>
+
+<section id="payment">
+  <p class="progress">Step 5 of 6 — Payment (mock)</p>
+  <h2>Payment</h2>
+  <label for="card-num">Card number</label>
+  <input id="card-num" type="text" placeholder="4242 4242 4242 4242">
+  <label for="cvv">CVV</label>
+  <input id="cvv" type="text" maxlength="4">
+  <div class="err" id="err-pay"></div>
+  <button type="button" id="btn-pay">Pay &amp; Confirm</button>
+</section>
+
+<section id="confirm">
+  <p class="progress">Step 6 of 6 — Confirmation</p>
+  <h2>Booking confirmed — ref: <span id="booking-ref">—</span></h2>
+  <p><strong>Route:</strong> <span id="summary-route">—</span></p>
+  <p><strong>Class:</strong> <span id="summary-class">—</span></p>
+  <p><strong>Date:</strong> <span id="summary-date">—</span></p>
+  <p><strong>Seat:</strong> <span id="summary-seat">—</span></p>
+  <p><strong>Passenger:</strong> <span id="summary-name">—</span> (<span id="summary-email">—</span>)</p>
+</section>
+
+<script>
+  const STEPS = ['route', 'date', 'seat', 'passenger', 'payment', 'confirm'];
+  const state = {};
+
+  function show(id) {
+    for (const s of STEPS) document.getElementById(s).classList.toggle('active', s === id);
+  }
+
+  // --- Step 1: route ---
+  document.getElementById('btn-route').addEventListener('click', () => {
+    const f = document.getElementById('from').value;
+    const t = document.getElementById('to').value;
+    const c = document.getElementById('class').value;
+    const err = document.getElementById('err-route');
+    if (!f || !t || !c) { err.textContent = 'Please pick From, To and Class.'; return; }
+    if (f === t) { err.textContent = 'From and To must differ.'; return; }
+    state.from = f; state.to = t; state.class = c;
+    err.textContent = '';
+    show('date');
+  });
+
+  // --- Step 2: date ---
+  document.getElementById('btn-date').addEventListener('click', () => {
+    const d = document.getElementById('travel-date').value;
+    const err = document.getElementById('err-date');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) {
+      err.textContent = 'Date must be YYYY-MM-DD.';
+      return;
+    }
+    state.date = d;
+    err.textContent = '';
+    buildSeatGrid();
+    show('seat');
+  });
+
+  // --- Step 3: seat ---
+  // Seat grid: rows 10-16, columns A/B/C/D. Some are unavailable.
+  const UNAVAIL = new Set(['10A', '11C', '12D', '13B', '14A', '15B']);
+  function buildSeatGrid() {
+    const host = document.getElementById('seat-grid');
+    host.innerHTML = '';
+    for (let row = 10; row <= 16; row++) {
+      for (const col of ['A', 'B', 'C', 'D']) {
+        const id = row + col;
+        const el = document.createElement('div');
+        el.className = 'seat' + (UNAVAIL.has(id) ? ' unavail' : '');
+        el.dataset.seat = id;
+        el.textContent = id;
+        host.appendChild(el);
+      }
+    }
+  }
+  document.getElementById('seat-grid').addEventListener('click', (ev) => {
+    const s = ev.target.closest('.seat');
+    if (!s || s.classList.contains('unavail')) return;
+    for (const n of document.querySelectorAll('.seat.selected')) n.classList.remove('selected');
+    s.classList.add('selected');
+    state.seat = s.dataset.seat;
+    document.getElementById('seat-chosen').textContent = s.dataset.seat;
+  });
+  document.getElementById('btn-seat').addEventListener('click', () => {
+    const err = document.getElementById('err-seat');
+    if (!state.seat) { err.textContent = 'Pick a seat first.'; return; }
+    err.textContent = '';
+    show('passenger');
+  });
+
+  // --- Step 4: passenger ---
+  document.getElementById('btn-pax').addEventListener('click', () => {
+    const n = document.getElementById('pax-name').value.trim();
+    const e = document.getElementById('pax-email').value.trim();
+    const p = document.getElementById('pax-phone').value.trim();
+    const err = document.getElementById('err-pax');
+    if (!n)                    { err.textContent = 'Name is required.'; return; }
+    if (!/^[^@\s]+@[^@\s]+\./.test(e)) { err.textContent = 'Valid email required.'; return; }
+    if (p.replace(/\D/g, '').length < 6) { err.textContent = 'Valid phone required.'; return; }
+    state.name = n; state.email = e; state.phone = p;
+    err.textContent = '';
+    show('payment');
+  });
+
+  // --- Step 5: payment ---
+  document.getElementById('btn-pay').addEventListener('click', () => {
+    const card = document.getElementById('card-num').value.replace(/\s/g, '');
+    const cvv  = document.getElementById('cvv').value;
+    const err  = document.getElementById('err-pay');
+    if (!/^\d{16}$/.test(card)) { err.textContent = 'Card number must be 16 digits.'; return; }
+    if (!/^\d{3,4}$/.test(cvv)) { err.textContent = 'CVV must be 3 or 4 digits.'; return; }
+    err.textContent = '';
+    // Reference derived from date: BK-YYMMDD
+    const [y, m, d] = state.date.split('-');
+    const ref = 'BK-' + y.slice(2) + m + d;
+    state.ref = ref;
+    document.getElementById('booking-ref').textContent   = ref;
+    document.getElementById('summary-route').textContent = state.from + ' → ' + state.to;
+    document.getElementById('summary-class').textContent = state.class;
+    document.getElementById('summary-date').textContent  = state.date;
+    document.getElementById('summary-seat').textContent  = state.seat;
+    document.getElementById('summary-name').textContent  = state.name;
+    document.getElementById('summary-email').textContent = state.email;
+    show('confirm');
+  });
+</script>
+</body>
+</html>

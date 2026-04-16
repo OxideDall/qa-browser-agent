@@ -1,0 +1,9 @@
+This is a Todo list app. Add three new todo items by typing each into the input box and pressing Enter:
+
+  1. Buy groceries
+  2. Read a chapter
+  3. Walk the dog
+
+Then mark the SECOND item ("Read a chapter") as complete by clicking its checkbox.
+
+After that, the footer should show "2 items left" and "3 total". Finish with done PASS quoting the footer text in your description.

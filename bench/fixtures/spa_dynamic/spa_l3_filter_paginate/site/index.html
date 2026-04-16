@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Bench — Widget catalog (filter + paginate)</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 820px; margin: 2em auto; padding: 0 1em; }
+  #filter { font-size: 1em; padding: 0.5em; width: 100%; box-sizing: border-box; margin-bottom: 1em; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 0.5em; border-bottom: 1px solid #ddd; }
+  button { font-size: 0.9em; padding: 0.35em 0.8em; cursor: pointer; }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .pager { margin: 1em 0; display: flex; gap: 0.5em; align-items: center; }
+  #selected { display: none; margin: 1em 0; padding: 0.8em 1em; background: #e9fbe9; border: 1px solid #8bc88b; border-radius: 6px; font-weight: 600; }
+  #selected.show { display: block; }
+</style>
+</head>
+<body>
+<h1>Widget catalog (50 items)</h1>
+<input id="filter" type="search" placeholder="Filter by SKU, name, or tier…" autocomplete="off">
+
+<table>
+  <thead><tr><th>SKU</th><th>Name</th><th>Tier</th><th></th></tr></thead>
+  <tbody id="rows"></tbody>
+</table>
+
+<div class="pager">
+  <button id="prev-btn" type="button">Prev</button>
+  <span id="page-label">Page 1 / 5</span>
+  <button id="next-btn" type="button">Next</button>
+  <span id="match-count" style="margin-left: auto; color: #666;"></span>
+</div>
+
+<div id="selected">
+  <span id="selected-text">Selected: <span id="selected-sku">—</span> — <span id="selected-name">—</span> — <span id="selected-tier">—</span></span>
+</div>
+
+<script>
+  // 50 widgets. Names cycled over 5 families; tiers cycle Basic / Pro / Premium.
+  const NAMES = [
+    'Quantum Sensor', 'Solar Panel', 'Photon Driver', 'Vector Coil', 'Magnetic Clamp',
+    'Plasma Lens', 'Neutrino Relay', 'Helix Spring', 'Binary Gate', 'Ion Thruster',
+  ];
+  const TIERS = ['Basic', 'Pro', 'Premium'];
+  const ALL = [];
+  for (let i = 1; i <= 50; i++) {
+    const sku = 'WDG-' + String(i).padStart(3, '0');
+    const name = NAMES[(i - 1) % NAMES.length];
+    const tier = TIERS[(i - 1) % TIERS.length];
+    ALL.push({ sku, name, tier });
+  }
+
+  const PAGE_SIZE = 10;
+  let page = 0;
+  let filter = '';
+
+  function filtered() {
+    const q = filter.trim().toLowerCase();
+    if (!q) return ALL;
+    return ALL.filter(w =>
+      w.sku.toLowerCase().includes(q) ||
+      w.name.toLowerCase().includes(q) ||
+      w.tier.toLowerCase().includes(q));
+  }
+
+  function render() {
+    const rows = document.getElementById('rows');
+    const list = filtered();
+    const totalPages = Math.max(1, Math.ceil(list.length / PAGE_SIZE));
+    if (page >= totalPages) page = totalPages - 1;
+    if (page < 0) page = 0;
+
+    const start = page * PAGE_SIZE;
+    const slice = list.slice(start, start + PAGE_SIZE);
+    rows.innerHTML = '';
+    for (const w of slice) {
+      const tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td><code>' + w.sku + '</code></td>' +
+        '<td>' + w.name + '</td>' +
+        '<td>' + w.tier + '</td>' +
+        '<td><button type="button" class="sel" data-sku="' + w.sku + '">Select</button></td>';
+      rows.appendChild(tr);
+    }
+    document.getElementById('page-label').textContent =
+      'Page ' + (page + 1) + ' / ' + totalPages;
+    document.getElementById('match-count').textContent =
+      list.length + ' match' + (list.length === 1 ? '' : 'es');
+    document.getElementById('prev-btn').disabled = page === 0;
+    document.getElementById('next-btn').disabled = page >= totalPages - 1;
+  }
+
+  document.getElementById('filter').addEventListener('input', (ev) => {
+    filter = ev.target.value;
+    page = 0;
+    render();
+  });
+  document.getElementById('prev-btn').addEventListener('click', () => { page--; render(); });
+  document.getElementById('next-btn').addEventListener('click', () => { page++; render(); });
+
+  document.addEventListener('click', (ev) => {
+    const b = ev.target.closest('button.sel');
+    if (!b) return;
+    const sku = b.dataset.sku;
+    const w = ALL.find(x => x.sku === sku);
+    if (!w) return;
+    document.getElementById('selected-sku').textContent  = w.sku;
+    document.getElementById('selected-name').textContent = w.name;
+    document.getElementById('selected-tier').textContent = w.tier;
+    document.getElementById('selected').classList.add('show');
+  });
+
+  render();
+</script>
+</body>
+</html>

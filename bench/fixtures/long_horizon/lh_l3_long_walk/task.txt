@@ -1,0 +1,21 @@
+This is a small company website with 5 linked pages. You start on the
+home page. Visit every page, and gather these FOUR facts:
+
+  F1. How many products are listed on the Products page? (an integer)
+  F2. What is the listed price of the "Nebula Cam" product, in roubles?
+      (will appear as `NNN ₽` on the product page)
+  F3. What year was Orbital Widgets Co. founded? (a 4-digit year, on the
+      About page)
+  F4. Who is the team lead? (a person's full name, on the Team page)
+
+Use the in-page links to navigate. Do NOT `goto` external URLs.
+
+When all four facts are collected, finish with a single done PASS
+describing all four, for example:
+
+  done PASS "3 products; Nebula Cam 12 499 ₽; founded 2018; team lead
+             Anna Volkova"
+
+ALL FOUR facts must appear verbatim in your final description. If any
+page fails to load or a fact is missing from the content, done FAIL with
+a clear reason.

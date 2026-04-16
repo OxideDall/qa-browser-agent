@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Bench dApp — 3-tx DeFi combo (wrap + approve + swap)</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 780px; margin: 2em auto; padding: 0 1em; }
+  button { font-size: 1em; padding: 0.7em 1.4em; cursor: pointer; margin: 0.4em 0.4em 0.4em 0; }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .box { border: 1px solid #ddd; border-radius: 6px; padding: 1em; margin: 1em 0; background: #f8f9fa; }
+  .row { margin: 0.3em 0; }
+  code { word-break: break-all; background: #eee; padding: 0.1em 0.4em; border-radius: 3px; }
+  .ok { color: #155724; }
+  .err { color: #b00; }
+  .pending { color: #856404; }
+  .status { font-weight: 600; }
+</style>
+</head>
+<body>
+<h1>3-tx combo: wrap 0.005 ETH → approve → swap to USDC</h1>
+<p>Exercises a full DeFi sequence in one fixture: take native ETH, wrap
+to WETH, approve that WETH for Uniswap V3 SwapRouter02, swap to USDC.
+Three transactions total; each needs its own MetaMask signature.</p>
+
+<div class="box">
+  <h2>Step 1 — Connect wallet</h2>
+  <button id="connect-btn" type="button">Connect Wallet</button>
+  <div class="row">Status: <span id="conn-status" class="status" data-state="disconnected">not connected</span></div>
+  <div class="row">Address: <code id="addr">—</code></div>
+  <div class="row">ETH balance: <code id="bal-eth">—</code></div>
+  <div class="row">WETH balance (before): <code id="bal-weth-before">—</code></div>
+  <div class="row">USDC balance (before): <code id="bal-usdc-before">—</code></div>
+</div>
+
+<div class="box">
+  <h2>Step 2 — Wrap 0.005 ETH</h2>
+  <button id="wrap-btn" type="button" disabled>Wrap 0.005 ETH</button>
+  <div class="row">wrap tx status: <span id="wrap-status" class="status" data-state="idle">idle</span></div>
+  <p class="row">wrap tx hash:</p>
+  <p id="wrap-tx-full" data-filled="no">—</p>
+</div>
+
+<div class="box">
+  <h2>Step 3 — Approve WETH to the Uniswap router</h2>
+  <button id="approve-btn" type="button" disabled>Approve 0.005 WETH</button>
+  <div class="row">approve tx status: <span id="approve-status" class="status" data-state="idle">idle</span></div>
+  <p class="row">approve tx hash:</p>
+  <p id="approve-tx-full" data-filled="no">—</p>
+</div>
+
+<div class="box">
+  <h2>Step 4 — Swap 0.005 WETH → USDC</h2>
+  <button id="swap-btn" type="button" disabled>Swap 0.005 WETH → USDC</button>
+  <div class="row">swap tx status: <span id="swap-status" class="status" data-state="idle">idle</span></div>
+  <p class="row">swap tx hash:</p>
+  <p id="swap-tx-full" data-filled="no">—</p>
+  <div class="row">USDC balance (after): <code id="bal-usdc-after">—</code></div>
+</div>
+
+<div class="box">
+  <h2>Step 5 — Outcome</h2>
+  <div id="outcome-wrap" data-state="pending" class="status" style="font-size: 1.1em;">
+    <p id="outcome">Connect, then Wrap, Approve, Swap in order.</p>
+  </div>
+</div>
+
+<script type="module">
+  import { BrowserProvider, Contract, parseEther, parseUnits, formatEther, formatUnits }
+    from 'https://cdn.jsdelivr.net/npm/ethers@6.13.4/+esm';
+
+  const SEPOLIA_HEX = '0xaa36a7';
+  const WETH   = '0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14';
+  const USDC   = '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238';
+  const ROUTER = '0x3bFA4769FB09eefC5a80d6E87c3B9C650f7Ae48E';
+  const FEE = 500;
+  const AMOUNT_ETH = parseEther('0.005');
+  const AMOUNT_WETH = parseUnits('0.005', 18);
+
+  const WETH_ABI = [
+    'function balanceOf(address) view returns (uint256)',
+    'function deposit() payable',
+    'function approve(address,uint256) returns (bool)',
+  ];
+  const USDC_ABI = [
+    'function balanceOf(address) view returns (uint256)',
+  ];
+  const ROUTER_ABI = [
+    'function exactInputSingle((address tokenIn,address tokenOut,uint24 fee,address recipient,uint256 amountIn,uint256 amountOutMinimum,uint160 sqrtPriceLimitX96)) payable returns (uint256)',
+  ];
+
+  let provider, signer, account;
+
+  function setOutcome(state, text) {
+    const w = document.getElementById('outcome-wrap');
+    w.dataset.state = state;
+    w.className = 'status ' + (state === 'ok' ? 'ok' : state === 'err' ? 'err' : 'pending');
+    document.getElementById('outcome').textContent = text;
+  }
+
+  async function refreshBalances() {
+    if (!account || !provider) return;
+    const weth = new Contract(WETH, WETH_ABI, provider);
+    const usdc = new Contract(USDC, USDC_ABI, provider);
+    const [eth, w, u] = await Promise.all([
+      provider.getBalance(account),
+      weth.balanceOf(account),
+      usdc.balanceOf(account),
+    ]);
+    document.getElementById('bal-eth').textContent = formatEther(eth) + ' ETH';
+    document.getElementById('bal-weth-before').textContent = formatUnits(w, 18) + ' WETH';
+    document.getElementById('bal-usdc-before').textContent = formatUnits(u, 6) + ' USDC';
+    return { eth, weth: w, usdc: u };
+  }
+
+  document.getElementById('connect-btn').addEventListener('click', async () => {
+    if (!window.ethereum) { setOutcome('err', 'window.ethereum missing'); return; }
+    try {
+      provider = new BrowserProvider(window.ethereum);
+      await provider.send('eth_requestAccounts', []);
+      const net = await provider.getNetwork();
+      if (net.chainId !== 11155111n) {
+        await window.ethereum.request({
+          method: 'wallet_switchEthereumChain',
+          params: [{ chainId: SEPOLIA_HEX }],
+        });
+        provider = new BrowserProvider(window.ethereum);
+      }
+      signer = await provider.getSigner();
+      account = await signer.getAddress();
+      document.getElementById('addr').textContent = account;
+      document.getElementById('conn-status').textContent = 'connected';
+      document.getElementById('conn-status').dataset.state = 'connected';
+      document.getElementById('conn-status').className = 'status ok';
+      const bals = await refreshBalances();
+      if (bals.eth < AMOUNT_ETH + parseEther('0.005')) {
+        setOutcome('err',
+          'need ~0.01 ETH; have ' + formatEther(bals.eth));
+        return;
+      }
+      document.getElementById('wrap-btn').disabled = false;
+      setOutcome('pending', 'connected — click Wrap to start');
+    } catch (e) {
+      setOutcome('err', 'connect failed: ' + (e.message || e));
+    }
+  });
+
+  document.getElementById('wrap-btn').addEventListener('click', async () => {
+    if (!signer) return;
+    const btn = document.getElementById('wrap-btn');
+    btn.disabled = true;
+    try {
+      setOutcome('pending', 'wrap: waiting for MetaMask...');
+      const weth = new Contract(WETH, WETH_ABI, signer);
+      document.getElementById('wrap-status').textContent = 'sign-pending';
+      const tx = await weth.deposit({ value: AMOUNT_ETH });
+      const full = document.getElementById('wrap-tx-full');
+      full.textContent = tx.hash;
+      full.dataset.filled = 'yes';
+      document.getElementById('wrap-status').textContent = 'mining';
+      setOutcome('pending', 'wrap tx: ' + tx.hash);
+      await tx.wait(1);
+      document.getElementById('wrap-status').textContent = 'confirmed';
+      document.getElementById('wrap-status').className = 'status ok';
+      await refreshBalances();
+      document.getElementById('approve-btn').disabled = false;
+      setOutcome('pending', 'wrapped — now click Approve');
+    } catch (e) {
+      setOutcome('err', 'wrap failed: ' + (e.message || e));
+    }
+  });
+
+  document.getElementById('approve-btn').addEventListener('click', async () => {
+    if (!signer) return;
+    const btn = document.getElementById('approve-btn');
+    btn.disabled = true;
+    try {
+      setOutcome('pending', 'approve: waiting for MetaMask...');
+      const weth = new Contract(WETH, WETH_ABI, signer);
+      document.getElementById('approve-status').textContent = 'sign-pending';
+      const tx = await weth.approve(ROUTER, AMOUNT_WETH);
+      const full = document.getElementById('approve-tx-full');
+      full.textContent = tx.hash;
+      full.dataset.filled = 'yes';
+      document.getElementById('approve-status').textContent = 'mining';
+      setOutcome('pending', 'approve tx: ' + tx.hash);
+      await tx.wait(1);
+      document.getElementById('approve-status').textContent = 'confirmed';
+      document.getElementById('approve-status').className = 'status ok';
+      document.getElementById('swap-btn').disabled = false;
+      setOutcome('pending', 'approved — now click Swap');
+    } catch (e) {
+      setOutcome('err', 'approve failed: ' + (e.message || e));
+    }
+  });
+
+  document.getElementById('swap-btn').addEventListener('click', async () => {
+    if (!signer) return;
+    const btn = document.getElementById('swap-btn');
+    btn.disabled = true;
+    try {
+      setOutcome('pending', 'swap: waiting for MetaMask...');
+      const router = new Contract(ROUTER, ROUTER_ABI, signer);
+      const params = {
+        tokenIn: WETH, tokenOut: USDC, fee: FEE, recipient: account,
+        amountIn: AMOUNT_WETH, amountOutMinimum: 0, sqrtPriceLimitX96: 0,
+      };
+      document.getElementById('swap-status').textContent = 'sign-pending';
+      const tx = await router.exactInputSingle(params);
+      const full = document.getElementById('swap-tx-full');
+      full.textContent = tx.hash;
+      full.dataset.filled = 'yes';
+      document.getElementById('swap-status').textContent = 'mining';
+      setOutcome('pending', 'swap tx: ' + tx.hash);
+      await tx.wait(1);
+      document.getElementById('swap-status').textContent = 'confirmed';
+      document.getElementById('swap-status').className = 'status ok';
+      const usdc = new Contract(USDC, USDC_ABI, provider);
+      const usdcAfter = await usdc.balanceOf(account);
+      document.getElementById('bal-usdc-after').textContent = formatUnits(usdcAfter, 6) + ' USDC';
+      setOutcome('ok',
+        'SUCCESS — combo complete. swap tx ' + tx.hash +
+        ', USDC balance now ' + formatUnits(usdcAfter, 6));
+    } catch (e) {
+      setOutcome('err', 'swap failed: ' + (e.message || e));
+    }
+  });
+</script>
+</body>
+</html>

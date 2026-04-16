@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>EchoBot Chat</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 560px; margin: 2em auto; padding: 0 1em; }
+  h1 { color: #444; }
+  #history { border: 1px solid #ddd; border-radius: 6px; padding: 0.8em;
+             height: 260px; overflow-y: auto; background: #f8f9fa;
+             margin-bottom: 1em; }
+  .msg { margin: 0.4em 0; }
+  .you  { color: #0055aa; }
+  .bot  { color: #aa0055; font-weight: 600; }
+  .row { display: flex; gap: 0.5em; }
+  .row input { flex: 1; padding: 0.6em; font-size: 1em; }
+  .row button { padding: 0.6em 1.4em; font-size: 1em; cursor: pointer; }
+</style>
+</head>
+<body>
+<h1>EchoBot Chat</h1>
+<p>Type a message. The bot echoes it back with the <code>BOT:</code>
+prefix. Press Enter or click Send to submit. Test 3 messages to verify
+the bot is responding.</p>
+
+<div id="history" data-msg-count="0" data-last-echo="">
+  <div class="msg bot"><strong>BOT:</strong> Hi! Send me a message and I will echo it.</div>
+</div>
+
+<form id="chat-form" class="row" onsubmit="return false;">
+  <input id="msg-input" type="text" placeholder="Type a message and press Enter">
+  <button id="send-btn" type="submit">Send</button>
+</form>
+
+<script>
+  const history = document.getElementById('history');
+  const input = document.getElementById('msg-input');
+
+  function appendMsg(who, text) {
+    const div = document.createElement('div');
+    div.className = 'msg ' + who;
+    const tag = document.createElement('strong');
+    tag.textContent = (who === 'you' ? 'YOU: ' : 'BOT: ');
+    div.appendChild(tag);
+    div.appendChild(document.createTextNode(text));
+    history.appendChild(div);
+    history.scrollTop = history.scrollHeight;
+  }
+
+  function send() {
+    const v = input.value.trim();
+    if (!v) return;
+    appendMsg('you', v);
+    input.value = '';
+    // echo after a small delay so the UI visibly updates
+    setTimeout(() => {
+      appendMsg('bot', v);
+      const n = parseInt(history.dataset.msgCount, 10) + 1;
+      history.dataset.msgCount = String(n);
+      history.dataset.lastEcho = v;
+    }, 150);
+  }
+
+  document.getElementById('chat-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    send();
+  });
+  document.getElementById('send-btn').addEventListener('click', (e) => {
+    e.preventDefault();
+    send();
+  });
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); send(); }
+  });
+</script>
+</body>
+</html>

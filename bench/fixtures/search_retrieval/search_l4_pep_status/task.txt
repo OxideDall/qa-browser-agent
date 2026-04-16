@@ -1,0 +1,18 @@
+A two-hop research task starting from a DuckDuckGo SERP:
+
+  Hop 1 — On the SERP, find the PEP number that introduced structural
+          pattern matching (the `match / case` statement) to Python.
+  Hop 2 — Navigate (via `goto`) to that PEP's page on
+          `peps.python.org` and read its Status field.
+
+Report in a single done PASS description, two things:
+  1. The PEP number (e.g. `PEP 634`).
+  2. The PEP's Status (one of: Draft, Accepted, Final, Rejected,
+     Withdrawn, Superseded, Deferred, Active). Structural pattern
+     matching shipped in Python 3.10, so expect `Final`.
+
+Example format: `done PASS "PEP 634 — Status: Final"`.
+
+Both the PEP number AND the word `Final` (or whatever the current
+Status actually is) must appear in your description. If either hop
+fails, done FAIL with a clear reason.

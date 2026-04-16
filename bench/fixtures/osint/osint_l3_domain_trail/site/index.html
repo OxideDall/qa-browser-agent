@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>BenchOSINT — Domain Lookup</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 720px; margin: 2em auto; padding: 0 1em; }
+  form { margin-top: 1em; display: flex; gap: 0.5em; }
+  input[type="text"] { font-size: 1em; padding: 0.5em; flex: 1; }
+  button { font-size: 1em; padding: 0.5em 1em; cursor: pointer; }
+  .hint { color: #666; font-size: 0.9em; margin-top: 0.4em; }
+  .err { color: #b00; margin-top: 0.6em; min-height: 1.2em; }
+</style>
+</head>
+<body>
+<h1>BenchOSINT — Domain investigator</h1>
+<p>Enter a domain to pull its WHOIS record, registrant details, and any
+linked public GitHub organisation.</p>
+
+<form id="lookup-form">
+  <input id="domain-input" type="text" placeholder="example.com" autocomplete="off">
+  <button type="submit">Lookup</button>
+</form>
+<p class="hint">Current database covers: <code>halcyon-data.io</code>,
+<code>example.com</code>, <code>orbital-widgets.co</code>.</p>
+<p class="err" id="err"></p>
+
+<script>
+  const DB = {
+    'halcyon-data.io':    '/whois_halcyon.html',
+    'example.com':        '/whois_example.html',
+    'orbital-widgets.co': '/whois_orbital.html',
+  };
+  document.getElementById('lookup-form').addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    const d = document.getElementById('domain-input').value.trim().toLowerCase();
+    if (!d) {
+      document.getElementById('err').textContent = 'Enter a domain.';
+      return;
+    }
+    const target = DB[d];
+    if (!target) {
+      document.getElementById('err').textContent =
+        'No WHOIS record for `' + d + '` in this mini database.';
+      return;
+    }
+    window.location.href = target;
+  });
+</script>
+</body>
+</html>

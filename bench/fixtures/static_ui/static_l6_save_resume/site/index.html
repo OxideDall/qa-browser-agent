@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Bench — Save/resume form</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 620px; margin: 2em auto; padding: 0 1em; }
+  label { display: block; margin: 0.6em 0 0.2em; font-weight: 600; }
+  input, select, textarea { font-size: 1em; padding: 0.45em; width: 100%; box-sizing: border-box; }
+  textarea { min-height: 3em; font-family: inherit; }
+  button { font-size: 1em; padding: 0.55em 1.1em; cursor: pointer; margin: 0.4em 0.4em 0 0; }
+  .banner { padding: 0.6em 0.9em; border-radius: 6px; margin: 0.8em 0; font-weight: 600; }
+  .banner.info { background: #fff7e0; border: 1px solid #d4b95a; color: #6a4e00; }
+  .banner.ok   { background: #e7f5e9; border: 1px solid #7fb97f; color: #245a24; }
+  .err { color: #b00; font-size: 0.9em; }
+  #success { display: none; margin-top: 1em; padding: 1em; background: #e9fbe9; border: 1px solid #8bc88b; border-radius: 6px; }
+  #success.show { display: block; }
+</style>
+</head>
+<body>
+<h1>Application form</h1>
+<p id="banner" class="banner info" style="display:none"></p>
+
+<form id="app-form" novalidate>
+  <label for="name">Full name</label>
+  <input id="name" type="text" autocomplete="name">
+
+  <label for="email">Email</label>
+  <input id="email" type="email" autocomplete="email">
+
+  <label for="phone">Phone</label>
+  <input id="phone" type="tel" autocomplete="tel">
+
+  <label for="address">Address</label>
+  <textarea id="address" autocomplete="street-address"></textarea>
+
+  <label for="contact">Preferred contact</label>
+  <select id="contact">
+    <option value="">— select —</option>
+    <option value="email">Email</option>
+    <option value="phone">Phone</option>
+    <option value="post">Post</option>
+  </select>
+
+  <label style="font-weight:400; margin-top:0.8em;">
+    <input id="tos" type="checkbox"> I accept the Terms of Service
+  </label>
+
+  <div class="err" id="err"></div>
+
+  <button id="save-btn"   type="button">Save draft</button>
+  <button id="submit-btn" type="submit">Submit application</button>
+</form>
+
+<div id="form-state" data-resumed="no" style="display:none"></div>
+
+<div id="success">
+  <h2>Application received</h2>
+  <p>Applicant: <span id="success-name">—</span></p>
+  <p>Email: <span id="success-email">—</span></p>
+  <p>Phone: <span id="success-phone">—</span></p>
+  <p>Address: <span id="success-address">—</span></p>
+  <p>Contact via <span id="success-contact">—</span>: <span id="success-contact-target">—</span></p>
+</div>
+
+<script>
+  const FIELDS = ['name', 'email', 'phone', 'address', 'contact'];
+  const KEY = 'bench-app-draft-v1';
+  const banner = document.getElementById('banner');
+
+  function showBanner(kind, text) {
+    banner.className = 'banner ' + kind;
+    banner.textContent = text;
+    banner.style.display = 'block';
+  }
+
+  function loadDraft() {
+    let raw;
+    try { raw = localStorage.getItem(KEY); } catch (e) { return; }
+    if (!raw) return;
+    let data;
+    try { data = JSON.parse(raw); } catch (e) { return; }
+    let n = 0;
+    for (const f of FIELDS) {
+      if (data[f] != null && data[f] !== '') {
+        const el = document.getElementById(f);
+        if (el) { el.value = data[f]; n++; }
+      }
+    }
+    if (data.tos) document.getElementById('tos').checked = true;
+    document.getElementById('form-state').dataset.resumed = 'yes';
+    showBanner('info', 'Draft found — ' + n + ' fields restored');
+  }
+
+  function saveDraft() {
+    const data = {};
+    for (const f of FIELDS) data[f] = document.getElementById(f).value;
+    data.tos = document.getElementById('tos').checked;
+    try { localStorage.setItem(KEY, JSON.stringify(data)); } catch (e) {}
+    const ts = new Date().toLocaleTimeString();
+    showBanner('ok', 'Draft saved at ' + ts + '. Resume anytime.');
+  }
+
+  function validate() {
+    const miss = [];
+    for (const f of ['name', 'email', 'phone', 'address', 'contact']) {
+      if (!document.getElementById(f).value.trim()) miss.push(f);
+    }
+    if (!document.getElementById('tos').checked) miss.push('tos');
+    return miss;
+  }
+
+  document.getElementById('save-btn').addEventListener('click', saveDraft);
+
+  document.getElementById('app-form').addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    const miss = validate();
+    if (miss.length) {
+      document.getElementById('err').textContent =
+        'Missing required: ' + miss.join(', ');
+      return;
+    }
+    document.getElementById('err').textContent = '';
+    document.getElementById('success-name').textContent    = document.getElementById('name').value.trim();
+    document.getElementById('success-email').textContent   = document.getElementById('email').value.trim();
+    document.getElementById('success-phone').textContent   = document.getElementById('phone').value.trim();
+    document.getElementById('success-address').textContent = document.getElementById('address').value.trim();
+    const contact = document.getElementById('contact').value;
+    document.getElementById('success-contact').textContent = contact;
+    const tgt = contact === 'email' ? document.getElementById('email').value :
+                contact === 'phone' ? document.getElementById('phone').value :
+                contact === 'post'  ? document.getElementById('address').value : '';
+    document.getElementById('success-contact-target').textContent = tgt;
+    document.getElementById('app-form').style.display = 'none';
+    banner.style.display = 'none';
+    document.getElementById('success').classList.add('show');
+    try { localStorage.removeItem(KEY); } catch (e) {}
+  });
+
+  loadDraft();
+</script>
+</body>
+</html>

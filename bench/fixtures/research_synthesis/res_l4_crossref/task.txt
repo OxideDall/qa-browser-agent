@@ -1,0 +1,22 @@
+You are on the DeepMind Wikipedia page.
+
+Compare the founding years of three AI labs — DeepMind, OpenAI, and
+Anthropic. Their Wikipedia articles are at:
+
+  - https://en.wikipedia.org/wiki/DeepMind
+  - https://en.wikipedia.org/wiki/OpenAI
+  - https://en.wikipedia.org/wiki/Anthropic
+
+Navigate with `goto` between pages to gather each founding year.
+
+Report in a single done PASS description, three things:
+  1. All three founding years (one per lab).
+  2. The list of labs ordered by ascending founding year (oldest first).
+  3. Which lab is the oldest.
+
+Example format: `done PASS "DeepMind 2010, OpenAI 2015, Anthropic 2021 —
+ascending: DeepMind, OpenAI, Anthropic — DeepMind is the oldest"`.
+
+All three years, the ordered list, and the word "oldest" (or "earliest")
+must appear in your description. If any page fails to load, done FAIL
+with a clear reason.

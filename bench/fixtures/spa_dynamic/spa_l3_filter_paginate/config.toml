@@ -1,0 +1,14 @@
+[fixture]
+id       = "spa_l3_filter_paginate"
+category = "spa_dynamic"
+level    = 3
+title    = "Find one widget out of 50 via filter box or pagination"
+
+[run]
+headless    = true
+max_steps   = 25
+
+[budget]
+max_steps        = 25
+max_tokens       = 60000
+max_wall_seconds = 150

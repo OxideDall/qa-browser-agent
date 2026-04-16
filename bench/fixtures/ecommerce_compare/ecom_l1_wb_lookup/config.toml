@@ -1,0 +1,17 @@
+[fixture]
+id       = "ecom_l1_wb_lookup"
+category = "ecommerce_compare"
+level    = 1
+title    = "Wildberries: report price of first USB-C cable result"
+
+[run]
+url         = "https://www.wildberries.ru/catalog/0/search.aspx?search=USB-C+%D0%BA%D0%B0%D0%B1%D0%B5%D0%BB%D1%8C"
+headless    = true
+max_steps   = 15
+
+[budget]
+max_steps        = 15
+max_tokens       = 60000
+max_wall_seconds = 120
+# Wildberries rotates products + layout — one retry buffers that.
+retries          = 2

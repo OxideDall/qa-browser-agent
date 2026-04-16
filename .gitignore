@@ -1,0 +1,34 @@
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+qa_screenshots/
+*.egg-info/
+dist/
+build/
+
+# Browser profile (contains session data)
+browser_profile/
+
+# Credentials + subscription OAuth module (not shipped in public tree)
+oauth_credentials.json
+.credentials.json
+.env
+.env.local
+qa_agent/oauth/
+
+# Bench results / run logs
+bench/results/
+bench/recorded/*.har
+bench/runs/
+bench/android/runs/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

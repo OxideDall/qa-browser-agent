@@ -1,0 +1,24 @@
+This page is a small threaded discussion board. Two threads are already
+posted:
+
+  - Thread 1 by Alice: "Who's up for lunch?" (2 replies)
+  - Thread 2 by Bob:   "Anyone seen the bug?" (0 replies)
+
+Your job — two actions, in any order:
+
+  A. Reply to Thread 2 ("Anyone seen the bug?") with the EXACT text:
+       I saw it this morning.
+     Click its "Reply" button, type into the textarea, press "Post".
+
+  B. Start a new top-level thread with title EXACTLY:
+       Coffee run?
+     Type the title into the "New thread" input at the top and click
+     "Create Thread".
+
+After both actions, the board should have 3 threads. A status line
+at the bottom reads `Board: 3 threads, latest="Coffee run?"`.
+
+Finish with done PASS quoting that status line verbatim — e.g.
+`done PASS 'Board: 3 threads, latest="Coffee run?"'`.
+
+If either action fails, done FAIL with a clear reason.

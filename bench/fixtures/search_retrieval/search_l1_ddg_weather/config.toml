@@ -1,0 +1,17 @@
+[fixture]
+id       = "search_l1_ddg_weather"
+category = "search_retrieval"
+level    = 1
+title    = "DuckDuckGo: read Moscow weather from results page"
+
+[run]
+url         = "https://duckduckgo.com/?q=%D0%BF%D0%BE%D0%B3%D0%BE%D0%B4%D0%B0+%D0%9C%D0%BE%D1%81%D0%BA%D0%B2%D0%B0+%D1%81%D0%B5%D0%B3%D0%BE%D0%B4%D0%BD%D1%8F&ia=web"
+headless    = true
+max_steps   = 12
+
+[budget]
+max_steps        = 12
+max_tokens       = 40000
+max_wall_seconds = 90
+# DDG rotates widget / result ordering — one retry absorbs that.
+retries          = 2

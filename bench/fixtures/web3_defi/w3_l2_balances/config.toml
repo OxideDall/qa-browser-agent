@@ -1,0 +1,20 @@
+[fixture]
+id       = "w3_l2_balances"
+category = "web3_defi"
+level    = 2
+title    = "Connect wallet + read native balance on Sepolia and Base Sepolia"
+
+[run]
+headless    = true
+max_steps   = 20
+extensions  = ["metamask"]
+
+[budget]
+max_steps        = 20
+max_tokens       = 80000
+max_wall_seconds = 180
+
+[network]
+chain_id             = 11155111
+rpc                  = "default"
+required_balance_eth = 0.0

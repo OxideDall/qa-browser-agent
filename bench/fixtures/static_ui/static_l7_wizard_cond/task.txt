@@ -1,0 +1,36 @@
+Sign up for a Pro account through this branching wizard. The form has
+3 visible steps but step 2 differs depending on the account type you
+pick in step 1.
+
+Use these EXACT values:
+
+  Step 1 — Account basics:
+    Email:        maria@example.com
+    Account type: Pro              ← this is critical; the wizard
+                                     shows a DIFFERENT step 2 for Pro
+                                     vs Free.
+    Click "Next: details".
+
+  Step 2 — Pro details (you should see fields for Company + Card;
+           the Free-path "Invite code" field should NOT be visible on
+           your screen):
+    Full name: Maria Garcia
+    Company:   Helios Analytics
+    Card:      4242 4242 4242 4242
+    Click "Next: review".
+
+  Step 3 — Review & submit:
+    The page shows a table echoing ALL your inputs. Confirm the
+    "Account type: Pro" line. Check the "I accept the ToS" box.
+    Click "Submit".
+
+A success screen appears with heading "Welcome, Maria Garcia" and a
+line "Plan: Pro".
+
+Finish with done PASS quoting the "Welcome, <name>" line AND the Plan
+line verbatim — e.g.
+`done PASS "Welcome, Maria Garcia — Plan: Pro"`.
+
+If the wizard accidentally routes to the Free path (you see an Invite
+Code field at step 2), done FAIL with a clear reason — you must be on
+the Pro path.

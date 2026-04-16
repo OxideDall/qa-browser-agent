@@ -1,0 +1,14 @@
+[fixture]
+id       = "soc_l1_echo_chat"
+category = "social_interactive"
+level    = 1
+title    = "Three-turn chat with a local echo bot"
+
+[run]
+headless    = true
+max_steps   = 15
+
+[budget]
+max_steps        = 15
+max_tokens       = 40000
+max_wall_seconds = 90

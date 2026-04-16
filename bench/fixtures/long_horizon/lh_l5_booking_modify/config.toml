@@ -1,0 +1,14 @@
+[fixture]
+id       = "lh_l5_booking_modify"
+category = "long_horizon"
+level    = 5
+title    = "Full booking flow + cancel + refund (8 steps, 2 800 ₽ fee math)"
+
+[run]
+headless    = true
+max_steps   = 45
+
+[budget]
+max_steps        = 45
+max_tokens       = 180000
+max_wall_seconds = 360

@@ -1,0 +1,12 @@
+Connect your MetaMask wallet to this test dApp and sign the test message.
+
+Steps:
+  1. Click "Connect Wallet". A MetaMask popup will open.
+  2. INSIDE the MetaMask popup: approve the connection (click Connect / Next / Confirm as needed).
+     If MetaMask is locked, unlock with password: Testpassword1!
+  3. Back on the page, the status should say "connected" and your address should appear.
+  4. Click "Sign Message". Another MetaMask popup appears.
+  5. INSIDE the MetaMask popup: approve the signature (click Sign / Confirm).
+  6. The page's "Outcome" section should show "SUCCESS — signature received: 0x..."
+
+When the green "SUCCESS" text is visible on the page, finish with done PASS quoting the outcome text (which includes the 0x signature prefix — that's your evidence).

@@ -1,0 +1,16 @@
+[fixture]
+id       = "search_l4_pep_status"
+category = "search_retrieval"
+level    = 4
+title    = "Find the PEP for pattern matching, then report its status"
+
+[run]
+url         = "https://duckduckgo.com/?q=python+PEP+structural+pattern+matching"
+headless    = true
+max_steps   = 20
+
+[budget]
+max_steps        = 20
+max_tokens       = 90000
+max_wall_seconds = 180
+retries          = 2

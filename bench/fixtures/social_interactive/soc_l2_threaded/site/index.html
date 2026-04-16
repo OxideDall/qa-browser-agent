@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Bench — Threaded board</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 720px; margin: 2em auto; padding: 0 1em; }
+  .thread { border: 1px solid #ddd; border-radius: 6px; padding: 0.8em 1em; margin: 0.8em 0; background: #fafbfc; }
+  .title { font-size: 1.1em; font-weight: 700; }
+  .author { color: #666; font-size: 0.9em; }
+  .reply { border-top: 1px dashed #e0e0e0; padding: 0.4em 0 0.2em; font-size: 0.95em; }
+  .reply .r-author { color: #666; margin-right: 0.4em; }
+  .compose { margin-top: 0.6em; }
+  input[type="text"], textarea { font-size: 1em; padding: 0.4em; width: 100%; box-sizing: border-box; }
+  button { font-size: 1em; padding: 0.4em 1em; cursor: pointer; margin-top: 0.4em; }
+  .hidden { display: none; }
+  #board-status { margin-top: 1em; font-weight: 600; color: #444; }
+</style>
+</head>
+<body>
+<h1>Threaded board</h1>
+
+<section id="new-thread">
+  <label for="new-title"><strong>New thread</strong></label>
+  <input id="new-title" type="text" placeholder="Thread title…">
+  <button id="new-thread-btn" type="button">Create Thread</button>
+</section>
+
+<section id="threads"></section>
+
+<p id="board-status">Board: 0 threads, latest=""</p>
+
+<script>
+  const state = {
+    threads: (window.__SEED_THREADS__ || []).map(t => ({ ...t, replies: [...t.replies] })),
+  };
+
+  function render() {
+    const host = document.getElementById('threads');
+    host.innerHTML = '';
+    for (const t of state.threads) {
+      const el = document.createElement('article');
+      el.className = 'thread';
+      el.dataset.id = t.id;
+      const repliesHtml = t.replies.map(r =>
+        '<div class="reply"><span class="r-author">' + r.author + ':</span><span class="r-text">' + r.text + '</span></div>'
+      ).join('');
+      el.innerHTML =
+        '<div class="title">' + t.title + '</div>' +
+        '<div class="author">by ' + t.author + '</div>' +
+        '<div class="replies">' + repliesHtml + '</div>' +
+        '<div class="compose hidden">' +
+          '<textarea rows="2" placeholder="Your reply…"></textarea>' +
+          '<button type="button" class="post">Post</button>' +
+        '</div>' +
+        '<button type="button" class="toggle-reply">Reply</button>';
+      host.appendChild(el);
+    }
+    const last = state.threads[state.threads.length - 1];
+    document.getElementById('board-status').textContent =
+      'Board: ' + state.threads.length + ' threads, latest="' +
+      (last ? last.title : '') + '"';
+  }
+
+  document.addEventListener('click', (ev) => {
+    const t = ev.target;
+    if (t.matches('.toggle-reply')) {
+      const thread = t.closest('.thread');
+      const compose = thread.querySelector('.compose');
+      compose.classList.toggle('hidden');
+      if (!compose.classList.contains('hidden')) {
+        compose.querySelector('textarea').focus();
+      }
+      return;
+    }
+    if (t.matches('.post')) {
+      const thread = t.closest('.thread');
+      const ta = thread.querySelector('textarea');
+      const text = ta.value.trim();
+      if (!text) return;
+      const id = thread.dataset.id;
+      const entry = state.threads.find(x => x.id === id);
+      if (!entry) return;
+      entry.replies.push({ author: 'You', text });
+      render();
+      return;
+    }
+    if (t.id === 'new-thread-btn') {
+      const input = document.getElementById('new-title');
+      const title = input.value.trim();
+      if (!title) return;
+      const nextId = 't' + (state.threads.length + 1);
+      state.threads.push({ id: nextId, title, author: 'You', replies: [] });
+      input.value = '';
+      render();
+      return;
+    }
+  });
+
+  render();
+</script>
+</body>
+</html>

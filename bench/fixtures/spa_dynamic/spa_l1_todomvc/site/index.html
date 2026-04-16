@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Todos</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 540px; margin: 2em auto; }
+  h1 { font-size: 3em; color: #b83f45; text-align: center; font-weight: 100; }
+  .new { width: 100%; padding: 1em; font-size: 1.2em; box-sizing: border-box;
+         border: 1px solid #ddd; }
+  ul { list-style: none; padding: 0; margin: 0; border-top: 1px solid #ddd; }
+  li { display: flex; align-items: center; padding: 0.8em 1em;
+       border-bottom: 1px solid #eee; }
+  li.done label { text-decoration: line-through; color: #999; }
+  li input[type=checkbox] { margin-right: 0.8em; transform: scale(1.4); }
+  .toggle { margin-right: 0.8em; }
+  .label { flex: 1; }
+  .footer { padding: 0.8em 1em; color: #777; font-size: 0.9em;
+            display: flex; justify-content: space-between; }
+</style>
+</head>
+<body>
+<h1>todos</h1>
+<input class="new" id="new-todo" placeholder="What needs to be done?" autofocus>
+<ul id="list"></ul>
+<div class="footer">
+  <span id="active-count">0 items left</span>
+  <span id="total-count">0 total</span>
+</div>
+<script>
+  const STORAGE_KEY = 'todos-vanilla';
+  let todos = [];
+  try { todos = JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; } catch (e) { todos = []; }
+  const persist = () => localStorage.setItem(STORAGE_KEY, JSON.stringify(todos));
+  const render = () => {
+    const list = document.getElementById('list');
+    list.innerHTML = '';
+    todos.forEach((t, idx) => {
+      const li = document.createElement('li');
+      li.dataset.id = String(idx);
+      if (t.completed) li.className = 'done';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.className = 'toggle';
+      cb.checked = !!t.completed;
+      cb.addEventListener('change', () => { todos[idx].completed = cb.checked; persist(); render(); });
+      const lbl = document.createElement('span');
+      lbl.className = 'label';
+      lbl.textContent = t.title;
+      li.appendChild(cb);
+      li.appendChild(lbl);
+      list.appendChild(li);
+    });
+    const active = todos.filter(t => !t.completed).length;
+    document.getElementById('active-count').textContent =
+      active === 1 ? '1 item left' : active + ' items left';
+    document.getElementById('total-count').textContent = todos.length + ' total';
+  };
+  const input = document.getElementById('new-todo');
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && input.value.trim()) {
+      todos.push({ title: input.value.trim(), completed: false });
+      persist();
+      input.value = '';
+      render();
+    }
+  });
+  render();
+</script>
+</body>
+</html>

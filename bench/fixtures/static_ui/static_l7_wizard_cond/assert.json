@@ -1,0 +1,12 @@
+{
+  "checks": [
+    {"type": "agent_status", "expected": "PASS"},
+    {"type": "dom_text_contains", "selector": "#success h2", "value": "Welcome, Maria Garcia"},
+    {"type": "dom_text", "selector": "#success-plan", "expected": "Pro"},
+    {"type": "dom_text", "selector": "#success-name", "expected": "Maria Garcia"},
+    {"type": "dom_text", "selector": "#success-email", "expected": "maria@example.com"},
+    {"type": "dom_text", "selector": "#success-company", "expected": "Helios Analytics"},
+    {"type": "dom_attr", "selector": "#success-card", "attr": "data-last4", "expected": "4242"},
+    {"type": "dom_attr", "selector": "#form-state", "attr": "data-path", "expected": "pro"}
+  ]
+}

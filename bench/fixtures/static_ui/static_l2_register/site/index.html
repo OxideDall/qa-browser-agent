@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Register — TestSite</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 480px; margin: 2em auto; }
+  label { display: block; margin: 1em 0 0.3em; font-weight: 600; }
+  input[type=text], input[type=email], input[type=password] {
+    width: 100%; padding: 0.5em; font-size: 1em; box-sizing: border-box;
+  }
+  .terms { margin: 1.5em 0; }
+  button { font-size: 1em; padding: 0.6em 1.4em; cursor: pointer; }
+  .err { color: #b00; margin-top: 0.5em; min-height: 1.2em; }
+</style>
+</head>
+<body>
+<h1>Create your TestSite account</h1>
+<form id="reg-form" novalidate>
+  <label for="name">Full name</label>
+  <input id="name" name="name" type="text" placeholder="Jane Doe" required>
+
+  <label for="email">Email</label>
+  <input id="email" name="email" type="email" placeholder="jane@example.com" required>
+
+  <label for="password">Password</label>
+  <input id="password" name="password" type="password" placeholder="min 8 characters" required minlength="8">
+
+  <label for="password2">Confirm password</label>
+  <input id="password2" name="password2" type="password" placeholder="repeat password" required>
+
+  <div class="terms">
+    <input id="terms" name="terms" type="checkbox" required>
+    <label for="terms" style="display:inline; font-weight:normal;">I agree to the Terms of Service</label>
+  </div>
+
+  <button id="submit-btn" type="submit">Create account</button>
+  <div id="err" class="err" role="alert"></div>
+</form>
+
+<script>
+  document.getElementById('reg-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const name = document.getElementById('name').value.trim();
+    const email = document.getElementById('email').value.trim();
+    const pw = document.getElementById('password').value;
+    const pw2 = document.getElementById('password2').value;
+    const terms = document.getElementById('terms').checked;
+    const err = document.getElementById('err');
+    if (!name || !email || !pw || !pw2) { err.textContent = 'All fields are required.'; return; }
+    if (!email.includes('@')) { err.textContent = 'Invalid email.'; return; }
+    if (pw.length < 8) { err.textContent = 'Password must be at least 8 characters.'; return; }
+    if (pw !== pw2) { err.textContent = 'Passwords do not match.'; return; }
+    if (!terms) { err.textContent = 'You must accept the Terms.'; return; }
+    location.href = 'success.html';
+  });
+</script>
+</body>
+</html>

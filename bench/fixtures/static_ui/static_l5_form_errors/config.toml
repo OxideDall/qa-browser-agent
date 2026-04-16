@@ -1,0 +1,14 @@
+[fixture]
+id       = "static_l5_form_errors"
+category = "static_ui"
+level    = 5
+title    = "Register flow with server-side validation error + recovery"
+
+[run]
+headless    = true
+max_steps   = 30
+
+[budget]
+max_steps        = 30
+max_tokens       = 70000
+max_wall_seconds = 180

@@ -1,0 +1,11 @@
+{
+  "checks": [
+    {"type": "agent_status", "expected": "PASS"},
+    {"type": "dom_count", "selector": "#list li", "min": 3, "max": 3},
+    {"type": "dom_count", "selector": "#list li.done", "min": 1, "max": 1},
+    {"type": "dom_text", "selector": "#active-count", "expected": "2 items left"},
+    {"type": "dom_text", "selector": "#total-count", "expected": "3 total"},
+    {"type": "localstorage_key", "key": "todos-vanilla",
+     "json_match": [{"title": "Read a chapter", "completed": true}]}
+  ]
+}

@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Bench — Kanban (3 columns, arrow-button moves)</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 960px; margin: 2em auto; padding: 0 1em; }
+  .board { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1em; }
+  .col { background: #f4f6f8; border: 1px solid #dde; border-radius: 6px; padding: 0.8em; min-height: 200px; }
+  .col h2 { margin: 0 0 0.6em; font-size: 1em; text-transform: uppercase; color: #555; }
+  .card { background: #fff; border: 1px solid #ccc; border-radius: 4px; padding: 0.5em 0.7em; margin-bottom: 0.5em; display: flex; align-items: center; justify-content: space-between; }
+  .card .title { font-weight: 600; }
+  .card .btns button { font-size: 1em; padding: 0.15em 0.5em; margin-left: 0.2em; cursor: pointer; }
+  .card .btns button:disabled { opacity: 0.35; cursor: not-allowed; }
+  #counter { margin-top: 1em; font-weight: 600; }
+</style>
+</head>
+<body>
+<h1>Kanban — move the cards</h1>
+
+<div class="board">
+  <div class="col" id="col-todo"><h2>To Do</h2><div class="cards"></div></div>
+  <div class="col" id="col-doing"><h2>Doing</h2><div class="cards"></div></div>
+  <div class="col" id="col-done"><h2>Done</h2><div class="cards"></div></div>
+</div>
+
+<p id="counter">Board: todo=0, doing=0, done=0</p>
+
+<script>
+  const COLS = ['todo', 'doing', 'done'];
+  // State: list of {id, title, col} in insertion order.
+  const cards = [
+    { id: 'c1', title: 'Fix bug #42',   col: 'todo'  },
+    { id: 'c2', title: 'Write docs',    col: 'todo'  },
+    { id: 'c3', title: 'Review PR',     col: 'todo'  },
+    { id: 'c4', title: 'Deploy staging', col: 'doing' },
+  ];
+
+  function render() {
+    for (const c of COLS) {
+      const host = document.querySelector('#col-' + c + ' .cards');
+      host.innerHTML = '';
+    }
+    for (const card of cards) {
+      const host = document.querySelector('#col-' + card.col + ' .cards');
+      const idx = COLS.indexOf(card.col);
+      const canLeft  = idx > 0;
+      const canRight = idx < COLS.length - 1;
+      const el = document.createElement('div');
+      el.className = 'card';
+      el.dataset.id = card.id;
+      el.innerHTML =
+        '<span class="title">' + card.title + '</span>' +
+        '<span class="btns">' +
+          '<button type="button" class="left"  data-id="' + card.id + '"' +
+            (canLeft  ? '' : ' disabled') + '>&larr;</button>' +
+          '<button type="button" class="right" data-id="' + card.id + '"' +
+            (canRight ? '' : ' disabled') + '>&rarr;</button>' +
+        '</span>';
+      host.appendChild(el);
+    }
+    const counts = {};
+    for (const c of COLS) counts[c] = cards.filter(x => x.col === c).length;
+    document.getElementById('counter').textContent =
+      'Board: todo=' + counts.todo +
+      ', doing=' + counts.doing +
+      ', done=' + counts.done;
+  }
+
+  document.addEventListener('click', (ev) => {
+    const b = ev.target.closest('button.left, button.right');
+    if (!b || b.disabled) return;
+    const card = cards.find(x => x.id === b.dataset.id);
+    if (!card) return;
+    const idx = COLS.indexOf(card.col);
+    const next = b.classList.contains('right') ? idx + 1 : idx - 1;
+    if (next < 0 || next >= COLS.length) return;
+    card.col = COLS[next];
+    render();
+  });
+
+  render();
+</script>
+</body>
+</html>

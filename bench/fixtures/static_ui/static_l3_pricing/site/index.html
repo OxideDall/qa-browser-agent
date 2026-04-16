@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Pricing — TestSite</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 960px; margin: 2em auto; padding: 0 1em; }
+  .plans { display: flex; gap: 1.5em; }
+  .plan { border: 1px solid #ccc; border-radius: 8px; padding: 1.4em; flex: 1; }
+  .plan h2 { margin-top: 0; }
+  .price { font-size: 1.6em; font-weight: bold; }
+  .price small { font-size: 0.6em; font-weight: normal; color: #666; }
+  ul { padding-left: 1.2em; }
+  button { font-size: 1em; padding: 0.6em 1em; cursor: pointer; width: 100%; }
+  #billing { margin-top: 2em; padding: 1em; border-top: 2px solid #eee; display: none; }
+  #billing.show { display: block; }
+  #billing label { display: block; margin: 0.6em 0 0.2em; font-weight: 600; }
+  #billing input { width: 100%; padding: 0.5em; box-sizing: border-box; }
+  #checkout { margin-top: 1em; font-size: 1em; padding: 0.6em 1.4em; cursor: pointer; }
+  #order-summary { margin-top: 1em; font-weight: bold; display: none; }
+  #order-summary.show { display: block; color: #155724; background: #d4edda; padding: 1em; border-radius: 4px; }
+</style>
+</head>
+<body>
+<h1>Choose a plan</h1>
+<p>Pick the plan that fits your team. You can change later.</p>
+
+<div class="plans">
+  <div class="plan" data-plan="basic">
+    <h2>Basic</h2>
+    <div class="price">$9 <small>/ user / month</small></div>
+    <ul><li>1 project</li><li>5 GB storage</li><li>Email support</li></ul>
+    <button type="button" data-pick="basic">Choose Basic</button>
+  </div>
+  <div class="plan" data-plan="pro">
+    <h2>Pro</h2>
+    <div class="price">$29 <small>/ user / month</small></div>
+    <ul><li>10 projects</li><li>100 GB storage</li><li>Priority support</li><li>Audit log</li></ul>
+    <button type="button" data-pick="pro">Choose Pro</button>
+  </div>
+  <div class="plan" data-plan="enterprise">
+    <h2>Enterprise</h2>
+    <div class="price">$99 <small>/ user / month</small></div>
+    <ul><li>Unlimited projects</li><li>1 TB storage</li><li>Dedicated CSM</li><li>SSO + SAML</li></ul>
+    <button type="button" data-pick="enterprise">Choose Enterprise</button>
+  </div>
+</div>
+
+<form id="billing" autocomplete="off">
+  <h2>Billing details for <span id="picked-name"></span></h2>
+  <label for="company">Company</label>
+  <input id="company" name="company" type="text" placeholder="Acme Inc.">
+
+  <label for="email">Billing email</label>
+  <input id="email" name="email" type="email" placeholder="billing@example.com">
+
+  <label for="seats">Seats</label>
+  <input id="seats" name="seats" type="number" value="5" min="1">
+
+  <button id="checkout" type="submit">Continue to checkout</button>
+</form>
+
+<div id="order-summary" data-plan="" data-status="">
+</div>
+
+<script>
+  let picked = null;
+  for (const btn of document.querySelectorAll('[data-pick]')) {
+    btn.addEventListener('click', () => {
+      picked = btn.dataset.pick;
+      document.getElementById('picked-name').textContent = picked.charAt(0).toUpperCase() + picked.slice(1);
+      document.getElementById('billing').classList.add('show');
+      for (const p of document.querySelectorAll('.plan')) {
+        p.style.outline = (p.dataset.plan === picked) ? '3px solid #007bff' : 'none';
+      }
+      document.getElementById('billing').dataset.plan = picked;
+    });
+  }
+  document.getElementById('billing').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const company = document.getElementById('company').value.trim();
+    const email = document.getElementById('email').value.trim();
+    if (!company || !email) return;
+    const summary = document.getElementById('order-summary');
+    summary.dataset.plan = picked;
+    summary.dataset.status = 'confirmed';
+    summary.textContent = `Order confirmed: ${picked.toUpperCase()} plan for ${company} (${email}).`;
+    summary.classList.add('show');
+  });
+</script>
+</body>
+</html>

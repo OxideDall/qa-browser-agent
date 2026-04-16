@@ -1,0 +1,16 @@
+[fixture]
+id       = "res_l4_crossref"
+category = "research_synthesis"
+level    = 4
+title    = "Sort 3 AI labs by founding year across 3 Wikipedia pages"
+
+[run]
+url         = "https://en.wikipedia.org/wiki/DeepMind"
+headless    = true
+max_steps   = 25
+
+[budget]
+max_steps        = 25
+max_tokens       = 140000
+max_wall_seconds = 240
+retries          = 2

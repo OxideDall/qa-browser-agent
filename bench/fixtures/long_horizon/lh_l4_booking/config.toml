@@ -1,0 +1,14 @@
+[fixture]
+id       = "lh_l4_booking"
+category = "long_horizon"
+level    = 4
+title    = "6-step train-ticket booking flow (route → date → seat → passenger → payment → confirm)"
+
+[run]
+headless    = true
+max_steps   = 40
+
+[budget]
+max_steps        = 40
+max_tokens       = 160000
+max_wall_seconds = 300

@@ -1,0 +1,49 @@
+Book a train ticket through the 6-step flow, then cancel it and verify
+the refund. Use these EXACT values during booking:
+
+  Step 1 — Route:
+    From: Moscow
+    To:   Saint Petersburg
+    Class: Business    ← note: business, not economy — ticket is 2 800 ₽
+    Click "Next: date".
+
+  Step 2 — Date:
+    Date: 2026-06-15 (type as 2026-06-15)
+    Click "Next: seat".
+
+  Step 3 — Seat:
+    Pick seat `14C` (available).
+    Click "Next: passenger".
+
+  Step 4 — Passenger:
+    Name:  Maria Garcia
+    Email: maria@example.com
+    Phone: +49 151 555 0101
+    Click "Next: payment".
+
+  Step 5 — Payment:
+    Card:  4242 4242 4242 4242
+    CVV:   123
+    Click "Pay & Confirm".
+
+  Step 6 — Confirmation — note the booking ref (format `BK-YYMMDD`),
+    the ticket price (2 800 ₽), and that status is "CONFIRMED".
+
+  Step 7 — Cancel. Click "Cancel booking" on the confirmation page.
+    A dialog appears explaining the 10% cancellation fee. Click
+    "Yes, cancel and refund".
+
+  Step 8 — Refund receipt. A receipt appears:
+      - booking ref (same as before)
+      - status: "CANCELLED"
+      - refund: ticket price minus 10% cancellation fee
+        = 2 800 × 0.90 = 2 520 ₽
+      - cancellation fee: 280 ₽
+
+Finish with done PASS quoting the booking ref + the cancelled status +
+the refund amount verbatim — e.g.
+`done PASS "BK-260615 CANCELLED — refund 2 520 ₽ (fee 280 ₽)"`.
+
+The booking ref (format `BK-NNNNNN`), the word `CANCELLED`, and the
+refund figure `2 520 ₽` must all appear in your description. If any
+step rejects or the refund math is off, done FAIL.

@@ -1,0 +1,15 @@
+[fixture]
+id       = "res_l1_wikipedia_ceo"
+category = "research_synthesis"
+level    = 1
+title    = "Find Anthropic's CEO from the Wikipedia article"
+
+[run]
+url         = "https://en.wikipedia.org/wiki/Anthropic"
+headless    = true
+max_steps   = 12
+
+[budget]
+max_steps        = 12
+max_tokens       = 40000
+max_wall_seconds = 90

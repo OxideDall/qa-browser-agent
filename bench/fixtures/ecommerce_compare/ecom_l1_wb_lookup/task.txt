@@ -1,0 +1,9 @@
+You are on Wildberries search results for "USB-C кабель".
+
+Identify the FIRST product card in the results and report its price.
+The price is shown as a ruble amount near the product name (e.g. "299 ₽",
+"1 499 ₽"). Finish with done PASS quoting the price verbatim including
+the currency symbol. That IS your evidence.
+
+If the results page fails to load or shows no products, done FAIL with
+a clear reason.

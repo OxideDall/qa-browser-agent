@@ -1,0 +1,13 @@
+{
+  "checks": [
+    {"type": "agent_status", "expected": "PASS"},
+    {"type": "dom_count", "selector": ".line-item", "min": 3, "max": 3},
+    {"type": "dom_text", "selector": "[data-item='lens'] .qty", "expected": "1"},
+    {"type": "dom_text", "selector": "[data-item='tripod'] .qty", "expected": "1"},
+    {"type": "dom_text", "selector": "[data-item='battery'] .qty", "expected": "2"},
+    {"type": "dom_count", "selector": "[data-item='cable']", "min": 0, "max": 0},
+    {"type": "dom_attr", "selector": "#summary-line", "attr": "data-total", "expected": "8190"},
+    {"type": "dom_attr", "selector": "#summary-line", "attr": "data-subtotal", "expected": "9100"},
+    {"type": "dom_attr", "selector": "#summary-line", "attr": "data-promo-applied", "expected": "BENCH10"}
+  ]
+}

@@ -1,0 +1,11 @@
+You are on the Wikipedia article about Anthropic.
+
+Find and report TWO facts about the company:
+  1. The year it was founded.
+  2. The name(s) of the founder(s) (at least one full name).
+
+Finish with done PASS and include BOTH facts verbatim in your
+description — e.g. `done PASS "Founded in 2021 by Dario Amodei and Daniela Amodei"`.
+That IS your evidence.
+
+If either fact is not on the page, done FAIL with a clear reason.

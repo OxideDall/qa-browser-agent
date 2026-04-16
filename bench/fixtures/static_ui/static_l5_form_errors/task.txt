@@ -1,0 +1,20 @@
+Register a new user on this site using these EXACT values:
+
+  Full name: Maria Garcia
+  Email:     maria@example.com
+  Password:  Secret-123
+
+Fill the form, click Register. The site will reject this email because
+it's already taken — you'll see an inline error below the email field
+saying "Email already in use". When that happens, change JUST the email
+to the next-available variant `maria2@example.com` and submit again.
+Keep the same name and password.
+
+When the form accepts, a success screen appears with the heading
+"Welcome aboard" and a line "Registered as: maria2@example.com".
+
+Finish with done PASS quoting that registered-as line verbatim — e.g.
+`done PASS 'Registered as: maria2@example.com'`.
+
+If the form shows any other error (non-email-taken), done FAIL with the
+exact error text quoted.

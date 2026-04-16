@@ -1,0 +1,14 @@
+[fixture]
+id       = "static_l3_pricing"
+category = "static_ui"
+level    = 3
+title    = "Pick Pro plan, fill billing, confirm order"
+
+[run]
+headless    = true
+max_steps   = 15
+
+[budget]
+max_steps        = 15
+max_tokens       = 30000
+max_wall_seconds = 75

@@ -1,0 +1,30 @@
+The AliExpress app has just been (re)launched for you. Two things to be
+aware of:
+
+  1. On first launch, AliExpress often opens a promotional bottom-sheet
+     (activity name has `AerMixerBottomSheetActivity`). It usually shows
+     a "Проверенные низкие цены" / "Откройте раздел «Ниже рынка»" copy
+     plus an "Открыть" button. **Dismiss it** by issuing `press back` —
+     do NOT tap "Открыть" (that takes you out of the home flow).
+
+  2. After dismissal you should land on the real home (activity
+     `RealMainActivity`). Look for:
+       - a bottom navigation with `Комбо / Ниже рынка / Корзина / Профиль`
+       - a search bar at the top whose text reads EXACTLY
+         `Найти на AliExpress` (resource-id contains `homepageSearchBar`).
+
+Your job:
+  3. Tap that "Найти на AliExpress" search bar.
+  4. A search screen slides in with an EditText ready for typing (you
+     should see a clearly different layout — typically an EditText, a
+     "Отмена"/"Cancel" button, and a list of suggestions or recent
+     searches).
+
+Finish with done PASS quoting the EXACT search-bar placeholder
+`Найти на AliExpress` — e.g.
+  `done PASS "tapped the 'Найти на AliExpress' search bar, search screen opened"`.
+
+The literal string `Найти на AliExpress` MUST appear in your description.
+If the app lands on any OTHER screen (launcher, Settings, login sheet,
+or you accidentally tapped "Открыть" and ended up in a category page),
+done FAIL with a clear reason.

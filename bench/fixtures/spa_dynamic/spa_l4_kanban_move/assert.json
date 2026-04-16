@@ -1,0 +1,11 @@
+{
+  "checks": [
+    {"type": "agent_status", "expected": "PASS"},
+    {"type": "dom_count", "selector": "#col-todo .card", "min": 2, "max": 2},
+    {"type": "dom_count", "selector": "#col-doing .card", "min": 1, "max": 1},
+    {"type": "dom_count", "selector": "#col-done .card", "min": 1, "max": 1},
+    {"type": "dom_text_contains", "selector": "#col-doing", "value": "Fix bug #42"},
+    {"type": "dom_text_contains", "selector": "#col-done", "value": "Deploy staging"},
+    {"type": "dom_text", "selector": "#counter", "expected": "Board: todo=2, doing=1, done=1"}
+  ]
+}

@@ -1,0 +1,14 @@
+[fixture]
+id       = "spa_l5_cart_checkout"
+category = "spa_dynamic"
+level    = 5
+title    = "Cart: adjust quantities, remove item, apply promo code, verify total"
+
+[run]
+headless    = true
+max_steps   = 35
+
+[budget]
+max_steps        = 35
+max_tokens       = 100000
+max_wall_seconds = 240

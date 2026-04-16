@@ -1,0 +1,14 @@
+[fixture]
+id       = "lh_l3_long_walk"
+category = "long_horizon"
+level    = 3
+title    = "Walk 5 local pages, collect 4 facts, report them in one done PASS"
+
+[run]
+headless    = true
+max_steps   = 35
+
+[budget]
+max_steps        = 35
+max_tokens       = 120000
+max_wall_seconds = 240

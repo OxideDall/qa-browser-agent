@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Bench dApp — Wrap ETH → WETH (Sepolia)</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 720px; margin: 2em auto; padding: 0 1em; }
+  button { font-size: 1em; padding: 0.7em 1.4em; cursor: pointer; margin: 0.4em 0.4em 0.4em 0; }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .box { border: 1px solid #ddd; border-radius: 6px; padding: 1em; margin: 1em 0; background: #f8f9fa; }
+  .row { margin: 0.3em 0; }
+  code { word-break: break-all; background: #eee; padding: 0.1em 0.4em; border-radius: 3px; }
+  .ok { color: #155724; }
+  .err { color: #b00; }
+  .pending { color: #856404; }
+  .status { font-weight: 600; }
+</style>
+</head>
+<body>
+<h1>Wrap 0.01 Sepolia ETH → WETH</h1>
+<p>Single on-chain transaction: deposit 0.01 native ETH into the Sepolia
+WETH9 contract, receive 0.01 WETH 1:1. Needs gas on Sepolia.</p>
+
+<div class="box">
+  <h2>Step 1 — Connect wallet</h2>
+  <button id="connect-btn" type="button">Connect Wallet</button>
+  <div class="row">Status: <span id="conn-status" class="status" data-state="disconnected">not connected</span></div>
+  <div class="row">Address: <code id="addr">—</code></div>
+  <div class="row">Chain: <code id="chain">—</code></div>
+  <div class="row">ETH balance: <code id="bal-eth">—</code></div>
+  <div class="row">WETH balance (before): <code id="bal-weth-before">—</code></div>
+</div>
+
+<div class="box">
+  <h2>Step 2 — Wrap</h2>
+  <button id="wrap-btn" type="button" disabled>Wrap 0.01 ETH</button>
+  <div class="row">tx hash: <code id="tx-hash">—</code></div>
+  <div class="row">tx status: <span id="tx-status" class="status" data-state="idle">idle</span></div>
+  <div class="row">WETH balance (after): <code id="bal-weth-after">—</code></div>
+</div>
+
+<div class="box">
+  <h2>Step 3 — Outcome</h2>
+  <div id="outcome-wrap" data-state="pending" class="status" style="font-size: 1.1em;">
+    <p id="outcome">Connect, then click Wrap.</p>
+  </div>
+  <p>Full tx hash (for evidence):</p>
+  <p id="tx-hash-full" data-filled="no">—</p>
+</div>
+
+<script type="module">
+  import { BrowserProvider, Contract, parseEther, formatEther }
+    from 'https://cdn.jsdelivr.net/npm/ethers@6.13.4/+esm';
+
+  const SEPOLIA_HEX = '0xaa36a7';   // chainId 11155111
+  const WETH = '0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14';
+  const WETH_ABI = [
+    'function balanceOf(address) view returns (uint256)',
+    'function deposit() payable',
+  ];
+  const AMOUNT = parseEther('0.01');
+
+  let provider = null;
+  let signer = null;
+  let account = null;
+
+  function setOutcome(state, text) {
+    const w = document.getElementById('outcome-wrap');
+    w.dataset.state = state;
+    w.className = 'status ' + (state === 'ok' ? 'ok' : state === 'err' ? 'err' : 'pending');
+    document.getElementById('outcome').textContent = text;
+  }
+
+  async function refreshBalances() {
+    if (!account || !provider) return;
+    const eth = await provider.getBalance(account);
+    const weth = new Contract(WETH, WETH_ABI, provider);
+    const wethBal = await weth.balanceOf(account);
+    document.getElementById('bal-eth').textContent = formatEther(eth) + ' ETH';
+    document.getElementById('bal-weth-before').textContent = formatEther(wethBal) + ' WETH';
+    return { eth, wethBal };
+  }
+
+  document.getElementById('connect-btn').addEventListener('click', async () => {
+    if (!window.ethereum) {
+      setOutcome('err', 'window.ethereum not injected — MetaMask is missing');
+      return;
+    }
+    try {
+      provider = new BrowserProvider(window.ethereum);
+      await provider.send('eth_requestAccounts', []);
+      // Force Sepolia
+      const net = await provider.getNetwork();
+      if (net.chainId !== 11155111n) {
+        try {
+          await window.ethereum.request({
+            method: 'wallet_switchEthereumChain',
+            params: [{ chainId: SEPOLIA_HEX }],
+          });
+          provider = new BrowserProvider(window.ethereum);
+        } catch (e) {
+          setOutcome('err', 'please switch wallet to Sepolia: ' + (e.message || e));
+          return;
+        }
+      }
+      signer = await provider.getSigner();
+      account = await signer.getAddress();
+      document.getElementById('addr').textContent = account;
+      const net2 = await provider.getNetwork();
+      document.getElementById('chain').textContent = net2.name + ' (' + net2.chainId + ')';
+      document.getElementById('conn-status').textContent = 'connected';
+      document.getElementById('conn-status').dataset.state = 'connected';
+      document.getElementById('conn-status').className = 'status ok';
+      await refreshBalances();
+      document.getElementById('wrap-btn').disabled = false;
+      setOutcome('pending', 'connected — click Wrap to sign the deposit tx');
+    } catch (e) {
+      setOutcome('err', 'connect failed: ' + (e.message || e));
+    }
+  });
+
+  document.getElementById('wrap-btn').addEventListener('click', async () => {
+    if (!signer) return;
+    const btn = document.getElementById('wrap-btn');
+    btn.disabled = true;
+    try {
+      const weth = new Contract(WETH, WETH_ABI, signer);
+      setOutcome('pending', 'waiting for MetaMask confirmation…');
+      document.getElementById('tx-status').textContent = 'sign-pending';
+      document.getElementById('tx-status').dataset.state = 'sign-pending';
+      const tx = await weth.deposit({ value: AMOUNT });
+      document.getElementById('tx-hash').textContent = tx.hash;
+      const fullEl = document.getElementById('tx-hash-full');
+      fullEl.textContent = tx.hash;
+      fullEl.dataset.filled = 'yes';
+      document.getElementById('tx-status').textContent = 'mining';
+      document.getElementById('tx-status').dataset.state = 'mining';
+      setOutcome('pending', 'tx submitted: ' + tx.hash + ' — waiting 1 confirmation…');
+      const receipt = await tx.wait(1);
+      if (receipt && receipt.status === 1) {
+        document.getElementById('tx-status').textContent = 'confirmed';
+        document.getElementById('tx-status').dataset.state = 'confirmed';
+        await refreshBalances();
+        const weth2 = new Contract(WETH, WETH_ABI, provider);
+        const wethNow = await weth2.balanceOf(account);
+        document.getElementById('bal-weth-after').textContent = formatEther(wethNow) + ' WETH';
+        setOutcome('ok',
+          'SUCCESS — wrapped 0.01 ETH, tx ' + tx.hash +
+          ', WETH balance now ' + formatEther(wethNow));
+      } else {
+        setOutcome('err', 'tx reverted: ' + tx.hash);
+      }
+    } catch (e) {
+      setOutcome('err', 'wrap failed: ' + (e.message || e));
+    } finally {
+      btn.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>

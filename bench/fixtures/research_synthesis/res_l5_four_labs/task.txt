@@ -1,0 +1,23 @@
+You are on the DeepMind Wikipedia page. Research FOUR AI companies and
+report, for each, the founding year AND the country of its headquarters.
+
+The four labs:
+  - DeepMind       — https://en.wikipedia.org/wiki/DeepMind
+  - OpenAI         — https://en.wikipedia.org/wiki/OpenAI
+  - Anthropic      — https://en.wikipedia.org/wiki/Anthropic
+  - Stability AI   — https://en.wikipedia.org/wiki/Stability_AI
+
+Navigate with `goto` between pages to gather the facts.
+
+Report in a single done PASS description, three things:
+  1. For EACH of the four labs: its founding year and its HQ country.
+  2. The list of labs ordered by ascending founding year (oldest first).
+  3. The two labs whose HQ is in the United Kingdom.
+
+Example format: `done PASS "DeepMind 2010 UK, OpenAI 2015 USA,
+Stability AI 2019 UK, Anthropic 2021 USA — ascending: DeepMind, OpenAI,
+Stability AI, Anthropic — UK labs: DeepMind, Stability AI"`.
+
+All four years, all four countries (UK/USA), the ascending order, AND
+the two UK labs must appear in your description. If any page fails to
+load, done FAIL with a clear reason.

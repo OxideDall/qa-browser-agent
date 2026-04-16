@@ -1,0 +1,8 @@
+Walk through this 4-step onboarding wizard end-to-end. Use these EXACT values:
+
+  Step 1: Full name = "Maria Garcia", Email = "maria@example.org"
+  Step 2: City = "Berlin", Country = "Germany"
+  Step 3: Language = "Deutsch", Newsletter = check the box
+  Step 4: Verify the review screen shows ALL the values above. Then confirm.
+
+You should see "All set!" appear when done. Finish with done PASS quoting the success heading text.

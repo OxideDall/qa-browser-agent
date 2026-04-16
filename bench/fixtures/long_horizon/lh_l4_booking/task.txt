@@ -1,0 +1,39 @@
+Book a train ticket through this 6-step flow. At each step, click the
+"Next" button to advance. Use these EXACT values:
+
+  Step 1 — Route:
+    From: Moscow
+    To:   Saint Petersburg
+    Class: Economy
+    Click "Next: date".
+
+  Step 2 — Date:
+    Date: 2026-05-01 (type into the date field as 2026-05-01)
+    Click "Next: seat".
+
+  Step 3 — Seat:
+    Pick seat `12A` from the seat grid (click it — only available seats
+    are clickable; 12A is available).
+    Click "Next: passenger".
+
+  Step 4 — Passenger:
+    Name:  Maria Garcia
+    Email: maria@example.com
+    Phone: +49 151 555 0101
+    Click "Next: payment".
+
+  Step 5 — Payment (mock):
+    Card:  4242 4242 4242 4242
+    CVV:   123
+    Click "Pay & Confirm".
+
+  Step 6 — Confirmation:
+    A screen appears with a booking reference line of the shape
+      "Booking confirmed — ref: BK-<6-digit-number>"
+    followed by a summary line containing route, date, seat, and name.
+
+Finish with done PASS quoting the "Booking confirmed" line AND the 6-
+digit BK reference verbatim — e.g.
+`done PASS "Booking confirmed — ref: BK-260501 — Moscow → Saint Petersburg, 2026-05-01, seat 12A, Maria Garcia"`.
+
+If any step rejects the input, done FAIL with a clear reason.

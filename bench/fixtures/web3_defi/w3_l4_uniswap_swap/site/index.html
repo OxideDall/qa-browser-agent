@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Bench dApp — Uniswap V3 swap WETH → USDC (Sepolia)</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 780px; margin: 2em auto; padding: 0 1em; }
+  button { font-size: 1em; padding: 0.7em 1.4em; cursor: pointer; margin: 0.4em 0.4em 0.4em 0; }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .box { border: 1px solid #ddd; border-radius: 6px; padding: 1em; margin: 1em 0; background: #f8f9fa; }
+  .row { margin: 0.3em 0; }
+  code { word-break: break-all; background: #eee; padding: 0.1em 0.4em; border-radius: 3px; }
+  .ok { color: #155724; }
+  .err { color: #b00; }
+  .pending { color: #856404; }
+  .status { font-weight: 600; }
+</style>
+</head>
+<body>
+<h1>Swap 0.01 WETH → USDC (Sepolia, Uniswap V3 0.05% pool)</h1>
+<p>Two transactions: (1) approve WETH for the Uniswap V3 SwapRouter02,
+(2) call <code>exactInputSingle(WETH → USDC)</code>. Needs existing WETH
+(see <code>w3_l3_wrap_eth</code> to get some).</p>
+
+<div class="box">
+  <h2>Step 1 — Connect wallet</h2>
+  <button id="connect-btn" type="button">Connect Wallet</button>
+  <div class="row">Status: <span id="conn-status" class="status" data-state="disconnected">not connected</span></div>
+  <div class="row">Address: <code id="addr">—</code></div>
+  <div class="row">Chain: <code id="chain">—</code></div>
+  <div class="row">WETH balance: <code id="bal-weth">—</code></div>
+  <div class="row">USDC balance (before): <code id="bal-usdc-before">—</code></div>
+  <div class="row">Router allowance: <code id="allowance">—</code></div>
+</div>
+
+<div class="box">
+  <h2>Step 2 — Approve WETH for Uniswap router</h2>
+  <button id="approve-btn" type="button" disabled>Approve 0.01 WETH</button>
+  <div class="row">approve tx status: <span id="approve-status" class="status" data-state="idle">idle</span></div>
+  <p class="row">approve tx hash:</p>
+  <p id="approve-tx-full" data-filled="no">—</p>
+</div>
+
+<div class="box">
+  <h2>Step 3 — Swap</h2>
+  <button id="swap-btn" type="button" disabled>Swap 0.01 WETH → USDC</button>
+  <div class="row">swap tx status: <span id="swap-status" class="status" data-state="idle">idle</span></div>
+  <p class="row">swap tx hash:</p>
+  <p id="swap-tx-full" data-filled="no">—</p>
+  <div class="row">USDC balance (after): <code id="bal-usdc-after">—</code></div>
+</div>
+
+<div class="box">
+  <h2>Step 4 — Outcome</h2>
+  <div id="outcome-wrap" data-state="pending" class="status" style="font-size: 1.1em;">
+    <p id="outcome">Connect, then Approve, then Swap.</p>
+  </div>
+</div>
+
+<script type="module">
+  import { BrowserProvider, Contract, parseUnits, formatUnits, MaxUint256 }
+    from 'https://cdn.jsdelivr.net/npm/ethers@6.13.4/+esm';
+
+  const SEPOLIA_HEX = '0xaa36a7';   // 11155111
+  const WETH   = '0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14';
+  const USDC   = '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238';
+  const ROUTER = '0x3bFA4769FB09eefC5a80d6E87c3B9C650f7Ae48E';
+  const FEE = 500;          // 0.05% pool — has confirmed liquidity
+  const AMOUNT_IN = parseUnits('0.01', 18);
+
+  const ERC20_ABI = [
+    'function balanceOf(address) view returns (uint256)',
+    'function allowance(address,address) view returns (uint256)',
+    'function approve(address,uint256) returns (bool)',
+    'function decimals() view returns (uint8)',
+    'function symbol() view returns (string)',
+  ];
+  const ROUTER_ABI = [
+    'function exactInputSingle((address tokenIn,address tokenOut,uint24 fee,address recipient,uint256 amountIn,uint256 amountOutMinimum,uint160 sqrtPriceLimitX96)) payable returns (uint256)',
+  ];
+
+  let provider, signer, account;
+
+  function setOutcome(state, text) {
+    const w = document.getElementById('outcome-wrap');
+    w.dataset.state = state;
+    w.className = 'status ' + (state === 'ok' ? 'ok' : state === 'err' ? 'err' : 'pending');
+    document.getElementById('outcome').textContent = text;
+  }
+
+  async function refreshBalances() {
+    if (!account || !provider) return;
+    const weth = new Contract(WETH, ERC20_ABI, provider);
+    const usdc = new Contract(USDC, ERC20_ABI, provider);
+    const [wethBal, usdcBal, allow] = await Promise.all([
+      weth.balanceOf(account),
+      usdc.balanceOf(account),
+      weth.allowance(account, ROUTER),
+    ]);
+    document.getElementById('bal-weth').textContent = formatUnits(wethBal, 18) + ' WETH';
+    document.getElementById('bal-usdc-before').textContent = formatUnits(usdcBal, 6) + ' USDC';
+    document.getElementById('allowance').textContent = formatUnits(allow, 18) + ' WETH';
+    document.getElementById('approve-btn').disabled = allow >= AMOUNT_IN;
+    document.getElementById('swap-btn').disabled = allow < AMOUNT_IN;
+    return { wethBal, usdcBal, allow };
+  }
+
+  document.getElementById('connect-btn').addEventListener('click', async () => {
+    if (!window.ethereum) { setOutcome('err', 'window.ethereum missing'); return; }
+    try {
+      provider = new BrowserProvider(window.ethereum);
+      await provider.send('eth_requestAccounts', []);
+      const net = await provider.getNetwork();
+      if (net.chainId !== 11155111n) {
+        await window.ethereum.request({
+          method: 'wallet_switchEthereumChain',
+          params: [{ chainId: SEPOLIA_HEX }],
+        });
+        provider = new BrowserProvider(window.ethereum);
+      }
+      signer = await provider.getSigner();
+      account = await signer.getAddress();
+      document.getElementById('addr').textContent = account;
+      const n2 = await provider.getNetwork();
+      document.getElementById('chain').textContent = n2.name + ' (' + n2.chainId + ')';
+      document.getElementById('conn-status').textContent = 'connected';
+      document.getElementById('conn-status').dataset.state = 'connected';
+      document.getElementById('conn-status').className = 'status ok';
+      const { wethBal } = await refreshBalances();
+      if (wethBal < AMOUNT_IN) {
+        setOutcome('err', 'need at least 0.01 WETH; your balance is '
+          + formatUnits(wethBal, 18) + ' — run w3_l3_wrap_eth first');
+        return;
+      }
+      setOutcome('pending', 'connected — approve WETH to the router, then swap');
+    } catch (e) {
+      setOutcome('err', 'connect failed: ' + (e.message || e));
+    }
+  });
+
+  document.getElementById('approve-btn').addEventListener('click', async () => {
+    if (!signer) return;
+    const btn = document.getElementById('approve-btn');
+    btn.disabled = true;
+    try {
+      setOutcome('pending', 'approve: waiting for MetaMask confirmation…');
+      const weth = new Contract(WETH, ERC20_ABI, signer);
+      document.getElementById('approve-status').textContent = 'sign-pending';
+      const tx = await weth.approve(ROUTER, AMOUNT_IN);
+      const full = document.getElementById('approve-tx-full');
+      full.textContent = tx.hash;
+      full.dataset.filled = 'yes';
+      document.getElementById('approve-status').textContent = 'mining';
+      setOutcome('pending', 'approve tx submitted: ' + tx.hash);
+      const r = await tx.wait(1);
+      if (r && r.status === 1) {
+        document.getElementById('approve-status').textContent = 'confirmed';
+        document.getElementById('approve-status').className = 'status ok';
+        await refreshBalances();
+        setOutcome('pending', 'approved — now click Swap');
+      } else {
+        setOutcome('err', 'approve reverted: ' + tx.hash);
+      }
+    } catch (e) {
+      setOutcome('err', 'approve failed: ' + (e.message || e));
+    } finally {
+      btn.disabled = false;
+      await refreshBalances();
+    }
+  });
+
+  document.getElementById('swap-btn').addEventListener('click', async () => {
+    if (!signer) return;
+    const btn = document.getElementById('swap-btn');
+    btn.disabled = true;
+    try {
+      setOutcome('pending', 'swap: waiting for MetaMask confirmation…');
+      const router = new Contract(ROUTER, ROUTER_ABI, signer);
+      const params = {
+        tokenIn: WETH,
+        tokenOut: USDC,
+        fee: FEE,
+        recipient: account,
+        amountIn: AMOUNT_IN,
+        amountOutMinimum: 0,     // tolerate any slippage on a testnet pool
+        sqrtPriceLimitX96: 0,
+      };
+      document.getElementById('swap-status').textContent = 'sign-pending';
+      const tx = await router.exactInputSingle(params);
+      const full = document.getElementById('swap-tx-full');
+      full.textContent = tx.hash;
+      full.dataset.filled = 'yes';
+      document.getElementById('swap-status').textContent = 'mining';
+      setOutcome('pending', 'swap tx submitted: ' + tx.hash);
+      const r = await tx.wait(1);
+      if (r && r.status === 1) {
+        document.getElementById('swap-status').textContent = 'confirmed';
+        document.getElementById('swap-status').className = 'status ok';
+        const usdc = new Contract(USDC, ERC20_ABI, provider);
+        const usdcAfter = await usdc.balanceOf(account);
+        document.getElementById('bal-usdc-after').textContent = formatUnits(usdcAfter, 6) + ' USDC';
+        setOutcome('ok',
+          'SUCCESS — swap tx ' + tx.hash +
+          ', USDC balance now ' + formatUnits(usdcAfter, 6));
+      } else {
+        setOutcome('err', 'swap reverted: ' + tx.hash);
+      }
+    } catch (e) {
+      setOutcome('err', 'swap failed: ' + (e.message || e));
+    } finally {
+      btn.disabled = false;
+      await refreshBalances();
+    }
+  });
+</script>
+</body>
+</html>

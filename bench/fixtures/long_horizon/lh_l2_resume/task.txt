@@ -1,0 +1,15 @@
+The todo list has been pre-seeded with 5 items, 2 of which are already
+marked complete. Your job: mark the 3 REMAINING pending items as
+complete, so that all 5 are done.
+
+Steps:
+  1. Look at the list. You should see 5 items; 2 have struck-through
+     text (already complete), 3 are in normal text (pending).
+  2. Click the checkbox next to each pending item to mark it complete.
+  3. The footer counter should update to "0 items left" and "5 total".
+
+Finish with done PASS quoting the footer — e.g.
+`done PASS "0 items left | 5 total"`.
+
+If the pre-seeded items aren't visible (seed script failed), done FAIL
+with a clear reason.

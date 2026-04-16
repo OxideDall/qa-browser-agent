@@ -1,0 +1,15 @@
+[fixture]
+id       = "lh_l2_resume"
+category = "long_horizon"
+level    = 2
+title    = "Resume a partially-complete todo list seeded via init_script"
+
+[run]
+headless    = true
+max_steps   = 15
+init_script = "init.js"
+
+[budget]
+max_steps        = 15
+max_tokens       = 60000
+max_wall_seconds = 120

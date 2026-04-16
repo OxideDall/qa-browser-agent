@@ -1,0 +1,13 @@
+Use DuckDuckGo search results on this page to find a specific PEP
+(Python Enhancement Proposal) number: the one that introduced f-strings
+to Python.
+
+Scan the SERP results for authoritative links (peps.python.org,
+python.org docs, Wikipedia) and identify the PEP number.
+
+Finish with done PASS quoting the PEP number — e.g.
+`done PASS "f-strings were introduced by PEP 498"`. The PEP number IS
+your evidence; anything else is nice-to-have.
+
+If the answer isn't findable on the current SERP and one refinement
+click doesn't surface it, done FAIL with a clear reason.

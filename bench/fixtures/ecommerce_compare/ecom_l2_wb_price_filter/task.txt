@@ -1,0 +1,15 @@
+You are on Wildberries search results for "наушники" (headphones).
+
+Look at the first THREE distinct product cards on the page. Report the
+price of each one as a line like:
+
+  1) <price1>
+  2) <price2>
+  3) <price3>
+
+Example: `done PASS '1) 999 ₽, 2) 1 450 ₽, 3) 2 340 ₽'`.
+
+Each price is a number followed by the ruble sign (₽). All three must
+be DIFFERENT products — scroll if needed. That IS your evidence.
+
+If the search results page fails to load, done FAIL with a clear reason.

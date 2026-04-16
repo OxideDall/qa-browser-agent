@@ -1,0 +1,15 @@
+[fixture]
+id       = "soc_l3_moderation"
+category = "social_interactive"
+level    = 3
+title    = "Post a message, edit it, then delete another — verify moderation log"
+
+[run]
+headless    = true
+max_steps   = 30
+init_script = "init.js"
+
+[budget]
+max_steps        = 30
+max_tokens       = 80000
+max_wall_seconds = 200

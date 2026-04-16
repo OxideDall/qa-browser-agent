@@ -1,0 +1,9 @@
+{
+  "checks": [
+    {"type": "agent_status", "expected": "PASS"},
+    {"type": "dom_attr", "selector": "#order-summary", "attr": "data-plan", "expected": "pro"},
+    {"type": "dom_attr", "selector": "#order-summary", "attr": "data-status", "expected": "confirmed"},
+    {"type": "dom_text_contains", "selector": "#order-summary", "value": "PRO"},
+    {"type": "dom_text_contains", "selector": "#order-summary", "value": "TestStartup LLC"}
+  ]
+}

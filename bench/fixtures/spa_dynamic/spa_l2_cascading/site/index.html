@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Cascading form</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 640px; margin: 2em auto; padding: 0 1em; }
+  label { display: block; margin: 1em 0 0.3em; font-weight: 600; }
+  select, input { width: 100%; padding: 0.5em; font-size: 1em; box-sizing: border-box; }
+  button { font-size: 1em; padding: 0.6em 1.2em; cursor: pointer; margin-top: 1.4em; }
+  #result { display: none; margin-top: 1.5em; padding: 1em; background: #d4edda;
+            color: #155724; border-radius: 4px; }
+  #result.show { display: block; }
+</style>
+</head>
+<body>
+<h1>Delivery location</h1>
+<p>Pick country → state → city in order. The inner selects populate based on
+the outer choice.</p>
+
+<label for="country">Country</label>
+<select id="country" data-testid="sel-country">
+  <option value="">— pick —</option>
+  <option value="US">United States</option>
+  <option value="DE">Germany</option>
+  <option value="JP">Japan</option>
+</select>
+
+<label for="state">State / Region</label>
+<select id="state" data-testid="sel-state" disabled>
+  <option value="">— pick country first —</option>
+</select>
+
+<label for="city">City</label>
+<select id="city" data-testid="sel-city" disabled>
+  <option value="">— pick state first —</option>
+</select>
+
+<button id="submit-btn" type="button">Submit</button>
+
+<div id="result" data-selected-country="" data-selected-state="" data-selected-city="">
+  <h2>Saved</h2>
+  <p id="saved-text">—</p>
+</div>
+
+<script>
+  const DATA = {
+    US: { name: "United States", states: {
+      CA: { name: "California",  cities: ["Los Angeles", "San Francisco", "San Diego"] },
+      NY: { name: "New York",    cities: ["New York City", "Buffalo", "Rochester"] },
+      TX: { name: "Texas",       cities: ["Houston", "Austin", "Dallas"] },
+    }},
+    DE: { name: "Germany", states: {
+      BY: { name: "Bavaria",     cities: ["Munich", "Nuremberg", "Augsburg"] },
+      NW: { name: "North Rhine-Westphalia", cities: ["Cologne", "Düsseldorf", "Dortmund"] },
+    }},
+    JP: { name: "Japan", states: {
+      TK: { name: "Tokyo",       cities: ["Tokyo", "Hachioji", "Tachikawa"] },
+      OS: { name: "Osaka",       cities: ["Osaka", "Sakai", "Hirakata"] },
+    }},
+  };
+
+  const countrySel = document.getElementById("country");
+  const stateSel = document.getElementById("state");
+  const citySel = document.getElementById("city");
+
+  countrySel.addEventListener("change", () => {
+    const c = countrySel.value;
+    stateSel.innerHTML = '<option value="">— pick —</option>';
+    citySel.innerHTML = '<option value="">— pick state first —</option>';
+    citySel.disabled = true;
+    if (!c) { stateSel.disabled = true; return; }
+    for (const [code, { name }] of Object.entries(DATA[c].states)) {
+      const opt = document.createElement("option");
+      opt.value = code; opt.textContent = name;
+      stateSel.appendChild(opt);
+    }
+    stateSel.disabled = false;
+  });
+
+  stateSel.addEventListener("change", () => {
+    const c = countrySel.value; const s = stateSel.value;
+    citySel.innerHTML = '<option value="">— pick —</option>';
+    if (!c || !s) { citySel.disabled = true; return; }
+    for (const name of DATA[c].states[s].cities) {
+      const opt = document.createElement("option");
+      opt.value = name; opt.textContent = name;
+      citySel.appendChild(opt);
+    }
+    citySel.disabled = false;
+  });
+
+  document.getElementById("submit-btn").addEventListener("click", () => {
+    const c = countrySel.value, s = stateSel.value, city = citySel.value;
+    if (!c || !s || !city) return;
+    const result = document.getElementById("result");
+    result.dataset.selectedCountry = c;
+    result.dataset.selectedState = s;
+    result.dataset.selectedCity = city;
+    document.getElementById("saved-text").textContent =
+      `Delivery saved: ${city}, ${DATA[c].states[s].name}, ${DATA[c].name}`;
+    result.classList.add("show");
+  });
+</script>
+</body>
+</html>

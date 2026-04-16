@@ -1,0 +1,30 @@
+You're on a small OSINT dashboard. Your job is to run a 3-step
+investigation on the domain `halcyon-data.io` and report four facts at
+the end.
+
+  Step 1 — Lookup. Type `halcyon-data.io` into the domain input, click
+           "Lookup". The page jumps to a WHOIS report for that domain.
+
+  Step 2 — WHOIS. Read the report. Note:
+             - the Registrant organisation name (e.g. "Halcyon Data Ltd")
+             - the admin-c email
+             - the linked GitHub organisation URL at the bottom of the
+               record
+           Click the GitHub-org link.
+
+  Step 3 — GitHub org. The org page lists its public repositories.
+           Note the exact count (it'll be rendered as
+           `Public repositories: N` near the top of the page).
+
+Report in a single done PASS description, four things:
+  1. The domain `halcyon-data.io`.
+  2. The registrant organisation name verbatim.
+  3. The GitHub organisation handle (e.g. `halcyon-data`).
+  4. The public-repo count as an integer.
+
+Example format:
+  `done PASS "halcyon-data.io = Halcyon Data Ltd → github.com/halcyon-data — 5 public repositories"`.
+
+All four pieces (domain, registrant org, gh handle, repo count) must
+appear verbatim in your description. If any page fails to load, done
+FAIL with a clear reason.

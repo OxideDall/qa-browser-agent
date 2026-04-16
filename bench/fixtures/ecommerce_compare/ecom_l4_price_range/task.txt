@@ -1,0 +1,27 @@
+Find the price range for "внешний аккумулятор" (power bank) on
+Wildberries by visiting two sort orders of the same search:
+
+  Ascending  (cheapest first):
+    https://www.wildberries.ru/catalog/0/search.aspx?search=%D0%B2%D0%BD%D0%B5%D1%88%D0%BD%D0%B8%D0%B9+%D0%B0%D0%BA%D0%BA%D1%83%D0%BC%D1%83%D0%BB%D1%8F%D1%82%D0%BE%D1%80&sort=priceup
+
+  Descending (most expensive first):
+    https://www.wildberries.ru/catalog/0/search.aspx?search=%D0%B2%D0%BD%D0%B5%D1%88%D0%BD%D0%B8%D0%B9+%D0%B0%D0%BA%D0%BA%D1%83%D0%BC%D1%83%D0%BB%D1%8F%D1%82%D0%BE%D1%80&sort=pricedown
+
+You're starting on the ascending page. Steps:
+
+  1. Note the FIRST-CARD price on the asc page — that's the cheapest.
+  2. `goto` the descending-sort URL above.
+  3. Note the FIRST-CARD price on the desc page — that's the most
+     expensive.
+
+Do NOT filter mentally by product sub-category (e.g. "power station
+vs. power bank") or inspect the title — the first card at each sort
+order is what WB gives you for this query, and that's what the task is
+testing. Trust the catalog; just report the prices.
+
+Report in a single done PASS description, in this shape:
+  `done PASS "cheapest: NNN ₽, most expensive: NNN ₽"`
+
+Both prices must appear with the `₽` symbol. The cheapest price must be
+strictly less than the most-expensive price. If either page fails to
+load, done FAIL with a clear reason.

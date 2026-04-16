@@ -1,0 +1,14 @@
+[fixture]
+id       = "osint_l2_crossref"
+category = "osint"
+level    = 2
+title    = "Confirm a speaker's full name by cross-referencing 2 independent sources"
+
+[run]
+headless    = true
+max_steps   = 20
+
+[budget]
+max_steps        = 20
+max_tokens       = 70000
+max_wall_seconds = 180

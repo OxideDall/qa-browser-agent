@@ -1,0 +1,15 @@
+[fixture]
+id       = "search_l3_pep_fstring"
+category = "search_retrieval"
+level    = 3
+title    = "Find the PEP number that introduced f-strings to Python"
+
+[run]
+url         = "https://duckduckgo.com/?q=python+PEP+number+introduced+f-strings"
+headless    = true
+max_steps   = 15
+
+[budget]
+max_steps        = 15
+max_tokens       = 60000
+max_wall_seconds = 120

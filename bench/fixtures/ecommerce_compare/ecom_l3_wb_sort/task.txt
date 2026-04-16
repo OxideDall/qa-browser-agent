@@ -1,0 +1,11 @@
+You are on Wildberries search results for "внешний аккумулятор"
+(power bank) sorted ascending by price (cheapest first).
+
+Identify the cheapest product on the FIRST page and report its price.
+Because the list is sorted, it's usually the first or second card
+— scroll a bit if the top of the page shows banners / ads.
+
+Finish with done PASS quoting the price verbatim including the ₽
+sign. That IS your evidence.
+
+If the results page fails to load, done FAIL with a clear reason.

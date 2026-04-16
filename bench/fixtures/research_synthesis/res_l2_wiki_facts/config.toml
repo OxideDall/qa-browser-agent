@@ -1,0 +1,15 @@
+[fixture]
+id       = "res_l2_wiki_facts"
+category = "research_synthesis"
+level    = 2
+title    = "Wikipedia Anthropic: report founding year + founder name"
+
+[run]
+url         = "https://en.wikipedia.org/wiki/Anthropic"
+headless    = true
+max_steps   = 15
+
+[budget]
+max_steps        = 15
+max_tokens       = 60000
+max_wall_seconds = 120

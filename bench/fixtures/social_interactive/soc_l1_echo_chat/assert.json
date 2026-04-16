@@ -1,0 +1,9 @@
+{
+  "checks": [
+    {"type": "agent_status", "expected": "PASS"},
+    {"type": "dom_attr", "selector": "#history", "attr": "data-msg-count", "expected": "3"},
+    {"type": "dom_attr", "selector": "#history", "attr": "data-last-echo", "expected": "goodbye"},
+    {"type": "dom_count", "selector": "#history .msg.you", "min": 3, "max": 3},
+    {"type": "dom_count", "selector": "#history .msg.bot", "min": 4, "max": 4}
+  ]
+}

@@ -1,0 +1,8 @@
+You are evaluating SaaS plans for a small startup. The constraint is "best plan under $50/user/month with priority support". Look at the three pricing tiers on the page and pick the one that matches.
+
+Then fill the billing form that appears with:
+  Company: TestStartup LLC
+  Billing email: billing@teststartup.dev
+  Seats: 8
+
+Submit the billing form. When you see the green "Order confirmed" summary appear, finish with done PASS quoting the confirmation text.

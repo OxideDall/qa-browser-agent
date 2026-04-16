@@ -1,0 +1,26 @@
+Compare the cheapest item in two very different Wildberries categories —
+USB cables (low-end commodity) and laptops (high-end electronics).
+
+You start on the asc-sorted USB-cable search:
+
+  https://www.wildberries.ru/catalog/0/search.aspx?search=usb+%D0%BA%D0%B0%D0%B1%D0%B5%D0%BB%D1%8C&sort=priceup
+
+After noting the FIRST-CARD price there (that's the cheapest USB cable),
+navigate with `goto` to the asc-sorted laptop search:
+
+  https://www.wildberries.ru/catalog/0/search.aspx?search=%D0%BD%D0%BE%D1%83%D1%82%D0%B1%D1%83%D0%BA&sort=priceup
+
+Note its first-card price (cheapest laptop).
+
+Report in a single done PASS description, three things:
+  1. cheapest USB cable price: `NNN ₽`
+  2. cheapest laptop price:    `NNN ₽`
+  3. A confirmation that the laptop price is higher than the cable price
+     (`laptop > cable` or phrase to that effect).
+
+Example format:
+  `done PASS "cheapest USB cable: 77 ₽, cheapest laptop: 8 990 ₽ — laptop > cable by 8 913 ₽"`.
+
+Both prices must appear with `₽`. The laptop price must be strictly
+greater than the cable price. If either page fails to load, done FAIL
+with a clear reason.

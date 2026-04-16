@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Bench dApp — Multi-chain balance reader</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 720px; margin: 2em auto; padding: 0 1em; }
+  button { font-size: 1em; padding: 0.7em 1.4em; cursor: pointer; margin: 0.4em 0.4em 0.4em 0; }
+  .box { border: 1px solid #ddd; border-radius: 6px; padding: 1em; margin: 1em 0; background: #f8f9fa; }
+  table { width: 100%; border-collapse: collapse; }
+  td, th { text-align: left; padding: 0.5em; border-bottom: 1px solid #eee; }
+  .val { font-family: monospace; font-weight: 600; }
+  .ok { color: #155724; }
+  .err { color: #b00; }
+  .status { font-weight: 600; }
+</style>
+</head>
+<body>
+<h1>Multi-chain Balance Reader</h1>
+<p>Connect your wallet, then query your native-currency balance on Sepolia and Base Sepolia via public RPCs. No transactions sent.</p>
+
+<div class="box">
+  <button id="connect-btn" type="button">Connect Wallet</button>
+  <span>Status: <span id="conn-status" class="status" data-state="disconnected">not connected</span></span>
+  <div>Address: <code id="addr">—</code></div>
+</div>
+
+<div class="box">
+  <button id="read-btn" type="button" disabled>Read balances</button>
+  <table>
+    <thead><tr><th>Network</th><th>Chain ID</th><th>Native balance</th></tr></thead>
+    <tbody>
+      <tr><td>Sepolia</td><td>11155111</td>
+          <td class="val"><span id="bal-sepolia" data-filled="no">—</span> ETH</td></tr>
+      <tr><td>Base Sepolia</td><td>84532</td>
+          <td class="val"><span id="bal-base" data-filled="no">—</span> ETH</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="box">
+  <div id="outcome-wrap" data-state="pending" class="status" style="font-size: 1.1em;">
+    <span id="outcome">Click Connect, then Read.</span>
+  </div>
+</div>
+
+<script>
+  const RPCS = {
+    sepolia: 'https://ethereum-sepolia-rpc.publicnode.com',
+    base:    'https://sepolia.base.org',
+  };
+
+  let account = null;
+
+  async function rpc(url, method, params) {
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+    });
+    const j = await r.json();
+    if (j.error) throw new Error(j.error.message || 'RPC error');
+    return j.result;
+  }
+
+  function weiHexToEth(hex) {
+    const wei = BigInt(hex);
+    const ethWhole = wei / 10n**18n;
+    const ethFrac = wei % 10n**18n;
+    // 6 decimal places, pad with zeros
+    const fracStr = ethFrac.toString().padStart(18, '0').slice(0, 6);
+    return `${ethWhole}.${fracStr}`;
+  }
+
+  function setOutcome(state, text) {
+    const wrap = document.getElementById('outcome-wrap');
+    wrap.dataset.state = state;
+    wrap.className = 'status ' + (state === 'ok' ? 'ok' : state === 'err' ? 'err' : '');
+    document.getElementById('outcome').textContent = text;
+  }
+
+  document.getElementById('connect-btn').addEventListener('click', async () => {
+    if (!window.ethereum) {
+      setOutcome('err', 'window.ethereum not injected — MetaMask is missing');
+      return;
+    }
+    try {
+      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+      account = accounts[0];
+      document.getElementById('addr').textContent = account;
+      document.getElementById('conn-status').textContent = 'connected';
+      document.getElementById('conn-status').dataset.state = 'connected';
+      document.getElementById('conn-status').className = 'status ok';
+      document.getElementById('read-btn').disabled = false;
+      setOutcome('pending', 'connected — click "Read balances" to query on-chain');
+    } catch (e) {
+      setOutcome('err', 'connect rejected: ' + (e && e.message || e));
+    }
+  });
+
+  document.getElementById('read-btn').addEventListener('click', async () => {
+    if (!account) return;
+    setOutcome('pending', 'querying RPCs…');
+    try {
+      const [sepHex, baseHex] = await Promise.all([
+        rpc(RPCS.sepolia, 'eth_getBalance', [account, 'latest']),
+        rpc(RPCS.base,    'eth_getBalance', [account, 'latest']),
+      ]);
+      const sepEth = weiHexToEth(sepHex);
+      const baseEth = weiHexToEth(baseHex);
+      const sepEl = document.getElementById('bal-sepolia');
+      const baseEl = document.getElementById('bal-base');
+      sepEl.textContent = sepEth;
+      sepEl.dataset.filled = 'yes';
+      baseEl.textContent = baseEth;
+      baseEl.dataset.filled = 'yes';
+      setOutcome('ok',
+        `SUCCESS — Sepolia: ${sepEth} ETH, Base Sepolia: ${baseEth} ETH`);
+    } catch (e) {
+      setOutcome('err', 'RPC error: ' + (e && e.message || e));
+    }
+  });
+</script>
+</body>
+</html>

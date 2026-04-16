@@ -1,0 +1,9 @@
+{
+  "checks": [
+    {"type": "agent_status", "expected": "PASS"},
+    {"type": "dom_text_contains", "selector": "#success h2", "value": "Welcome aboard"},
+    {"type": "dom_text", "selector": "#success-email", "expected": "maria2@example.com"},
+    {"type": "dom_text", "selector": "#success-name", "expected": "Maria Garcia"},
+    {"type": "dom_attr", "selector": "#form-state", "attr": "data-attempts", "expected": "2"}
+  ]
+}

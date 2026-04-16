@@ -1,0 +1,12 @@
+Fill in this cascading delivery-location form with these EXACT values:
+
+  Country:        Germany
+  State / Region: Bavaria
+  City:           Munich
+
+The inner selects only populate after you pick the outer one — the order
+matters. When all three are picked, click Submit. A green "Saved" box
+will appear with text like "Delivery saved: Munich, Bavaria, Germany".
+
+Finish with done PASS quoting that "Delivery saved: …" line verbatim.
+If the form fails to submit or the saved box doesn't appear, done FAIL.

@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Bench — Branching wizard (Free / Pro)</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 620px; margin: 2em auto; padding: 0 1em; }
+  section { display: none; }
+  section.active { display: block; }
+  label { display: block; margin: 0.6em 0 0.2em; font-weight: 600; }
+  input, select { font-size: 1em; padding: 0.45em; width: 100%; box-sizing: border-box; }
+  button { font-size: 1em; padding: 0.55em 1.1em; cursor: pointer; margin-top: 1em; }
+  .err { color: #b00; font-size: 0.9em; min-height: 1.2em; }
+  .progress { color: #666; font-size: 0.85em; margin-bottom: 0.5em; }
+  table.review { width: 100%; border-collapse: collapse; margin-top: 0.8em; }
+  table.review td { padding: 0.4em; border-bottom: 1px solid #eee; }
+  table.review td:first-child { font-weight: 600; color: #333; width: 40%; }
+  #success { background: #e9fbe9; border: 1px solid #8bc88b; padding: 1em; border-radius: 6px; }
+</style>
+</head>
+<body>
+
+<section id="basics" class="active">
+  <p class="progress">Step 1 of 3 — Account basics</p>
+  <h2>Create your account</h2>
+  <label for="email">Email</label>
+  <input id="email" type="email" autocomplete="email">
+  <label for="acct-type">Account type</label>
+  <select id="acct-type">
+    <option value="">— select —</option>
+    <option value="free">Free</option>
+    <option value="pro">Pro</option>
+  </select>
+  <div class="err" id="err-basics"></div>
+  <button type="button" id="btn-basics">Next: details</button>
+</section>
+
+<!-- PRO path -->
+<section id="details-pro">
+  <p class="progress">Step 2 of 3 — Pro details</p>
+  <h2>Tell us about you — Pro plan</h2>
+  <label for="pro-name">Full name</label>
+  <input id="pro-name" type="text" autocomplete="name">
+  <label for="pro-company">Company</label>
+  <input id="pro-company" type="text" autocomplete="organization">
+  <label for="pro-card">Card number</label>
+  <input id="pro-card" type="text" placeholder="4242 4242 4242 4242">
+  <div class="err" id="err-pro"></div>
+  <button type="button" id="btn-pro">Next: review</button>
+</section>
+
+<!-- FREE path -->
+<section id="details-free">
+  <p class="progress">Step 2 of 3 — Free details</p>
+  <h2>Tell us about you — Free plan</h2>
+  <label for="free-name">Full name</label>
+  <input id="free-name" type="text" autocomplete="name">
+  <label for="free-invite">Invite code</label>
+  <input id="free-invite" type="text" placeholder="INVITE-XXXX">
+  <div class="err" id="err-free"></div>
+  <button type="button" id="btn-free">Next: review</button>
+</section>
+
+<section id="review">
+  <p class="progress">Step 3 of 3 — Review &amp; submit</p>
+  <h2>Review your details</h2>
+  <table class="review" id="review-table"><tbody></tbody></table>
+  <label style="font-weight:400; margin-top:0.8em;">
+    <input id="tos" type="checkbox"> I accept the Terms of Service
+  </label>
+  <div class="err" id="err-review"></div>
+  <button type="button" id="btn-submit">Submit</button>
+</section>
+
+<section id="success">
+  <h2>Welcome, <span id="success-name">—</span></h2>
+  <p>Your account has been created successfully.</p>
+  <p>Plan: <span id="success-plan">—</span></p>
+  <p>Email: <span id="success-email">—</span></p>
+  <p>Company: <span id="success-company">—</span></p>
+  <p>Card: <span id="success-card" data-last4="">—</span></p>
+</section>
+
+<div id="form-state" data-path="" style="display:none"></div>
+
+<script>
+  const STEPS = ['basics', 'details-pro', 'details-free', 'review', 'success'];
+  const state = {};
+
+  function show(id) {
+    for (const s of STEPS) document.getElementById(s).classList.toggle('active', s === id);
+  }
+
+  // --- Step 1: basics ---
+  document.getElementById('btn-basics').addEventListener('click', () => {
+    const e = document.getElementById('email').value.trim();
+    const t = document.getElementById('acct-type').value;
+    const err = document.getElementById('err-basics');
+    if (!/^[^@\s]+@[^@\s]+\./.test(e)) { err.textContent = 'Enter a valid email.'; return; }
+    if (t !== 'free' && t !== 'pro')   { err.textContent = 'Pick Free or Pro.'; return; }
+    state.email = e; state.type = t;
+    document.getElementById('form-state').dataset.path = t;
+    err.textContent = '';
+    show(t === 'pro' ? 'details-pro' : 'details-free');
+  });
+
+  // --- Step 2 Pro ---
+  document.getElementById('btn-pro').addEventListener('click', () => {
+    const n = document.getElementById('pro-name').value.trim();
+    const c = document.getElementById('pro-company').value.trim();
+    const card = document.getElementById('pro-card').value.replace(/\s/g, '');
+    const err = document.getElementById('err-pro');
+    if (!n) { err.textContent = 'Name required.'; return; }
+    if (!c) { err.textContent = 'Company required (Pro plan).'; return; }
+    if (!/^\d{16}$/.test(card)) { err.textContent = 'Card number must be 16 digits.'; return; }
+    state.name = n; state.company = c; state.card = card;
+    err.textContent = '';
+    renderReview();
+    show('review');
+  });
+
+  // --- Step 2 Free ---
+  document.getElementById('btn-free').addEventListener('click', () => {
+    const n = document.getElementById('free-name').value.trim();
+    const inv = document.getElementById('free-invite').value.trim();
+    const err = document.getElementById('err-free');
+    if (!n) { err.textContent = 'Name required.'; return; }
+    if (!/^INVITE-\w{4,8}$/i.test(inv)) { err.textContent = 'Invite code format: INVITE-XXXX.'; return; }
+    state.name = n; state.invite = inv;
+    err.textContent = '';
+    renderReview();
+    show('review');
+  });
+
+  function renderReview() {
+    const tb = document.querySelector('#review-table tbody');
+    const rows = [
+      ['Account type', state.type === 'pro' ? 'Pro' : 'Free'],
+      ['Email',        state.email],
+      ['Full name',    state.name],
+    ];
+    if (state.type === 'pro') {
+      rows.push(['Company',     state.company]);
+      rows.push(['Card (last 4)', state.card.slice(-4)]);
+    } else {
+      rows.push(['Invite code', state.invite]);
+    }
+    tb.innerHTML = rows.map(r =>
+      '<tr><td>' + r[0] + '</td><td>' + r[1] + '</td></tr>'
+    ).join('');
+  }
+
+  // --- Step 3: submit ---
+  document.getElementById('btn-submit').addEventListener('click', () => {
+    const err = document.getElementById('err-review');
+    if (!document.getElementById('tos').checked) {
+      err.textContent = 'You must accept the ToS.';
+      return;
+    }
+    err.textContent = '';
+    document.getElementById('success-name').textContent  = state.name;
+    document.getElementById('success-plan').textContent  = state.type === 'pro' ? 'Pro' : 'Free';
+    document.getElementById('success-email').textContent = state.email;
+    document.getElementById('success-company').textContent = state.company || '(n/a — free plan)';
+    const cardEl = document.getElementById('success-card');
+    if (state.type === 'pro') {
+      cardEl.textContent = '••••-' + state.card.slice(-4);
+      cardEl.dataset.last4 = state.card.slice(-4);
+    } else {
+      cardEl.textContent = '(none — free plan)';
+      cardEl.dataset.last4 = '';
+    }
+    show('success');
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Bench dApp — USDC transfer (Sepolia)</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 720px; margin: 2em auto; padding: 0 1em; }
+  button { font-size: 1em; padding: 0.7em 1.4em; cursor: pointer; margin: 0.4em 0.4em 0.4em 0; }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .box { border: 1px solid #ddd; border-radius: 6px; padding: 1em; margin: 1em 0; background: #f8f9fa; }
+  .row { margin: 0.3em 0; }
+  code { word-break: break-all; background: #eee; padding: 0.1em 0.4em; border-radius: 3px; }
+  .ok { color: #155724; }
+  .err { color: #b00; }
+  .pending { color: #856404; }
+  .status { font-weight: 600; }
+</style>
+</head>
+<body>
+<h1>Transfer 1 USDC → dead address (Sepolia)</h1>
+<p>Direct ERC-20 transfer. Calls
+<code>USDC.transfer(0x…dEaD, 1e6)</code> — moves 1 USDC from your wallet
+to the conventional burn-like "dead" address. Single tx, no approval
+needed (ERC-20 transfers are allowance-free).</p>
+
+<div class="box">
+  <h2>Step 1 — Connect wallet</h2>
+  <button id="connect-btn" type="button">Connect Wallet</button>
+  <div class="row">Status: <span id="conn-status" class="status" data-state="disconnected">not connected</span></div>
+  <div class="row">Address: <code id="addr">—</code></div>
+  <div class="row">USDC balance (before): <code id="bal-before">—</code></div>
+</div>
+
+<div class="box">
+  <h2>Step 2 — Transfer</h2>
+  <button id="transfer-btn" type="button" disabled>Transfer 1 USDC</button>
+  <div class="row">tx status: <span id="tx-status" class="status" data-state="idle">idle</span></div>
+  <p class="row">tx hash:</p>
+  <p id="tx-hash-full" data-filled="no">—</p>
+  <div class="row">USDC balance (after): <code id="bal-after">—</code></div>
+</div>
+
+<div class="box">
+  <h2>Step 3 — Outcome</h2>
+  <div id="outcome-wrap" data-state="pending" class="status" style="font-size: 1.1em;">
+    <p id="outcome">Connect, then Transfer.</p>
+  </div>
+</div>
+
+<script type="module">
+  import { BrowserProvider, Contract, parseUnits, formatUnits }
+    from 'https://cdn.jsdelivr.net/npm/ethers@6.13.4/+esm';
+
+  const SEPOLIA_HEX = '0xaa36a7';   // 11155111
+  const USDC = '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238';
+  const DEAD = '0x000000000000000000000000000000000000dEaD';
+  const AMOUNT = parseUnits('1', 6);   // 1 USDC (6 decimals)
+  const ERC20_ABI = [
+    'function balanceOf(address) view returns (uint256)',
+    'function transfer(address,uint256) returns (bool)',
+    'function decimals() view returns (uint8)',
+  ];
+
+  let provider, signer, account;
+
+  function setOutcome(state, text) {
+    const w = document.getElementById('outcome-wrap');
+    w.dataset.state = state;
+    w.className = 'status ' + (state === 'ok' ? 'ok' : state === 'err' ? 'err' : 'pending');
+    document.getElementById('outcome').textContent = text;
+  }
+
+  document.getElementById('connect-btn').addEventListener('click', async () => {
+    if (!window.ethereum) { setOutcome('err', 'window.ethereum missing'); return; }
+    try {
+      provider = new BrowserProvider(window.ethereum);
+      await provider.send('eth_requestAccounts', []);
+      const net = await provider.getNetwork();
+      if (net.chainId !== 11155111n) {
+        await window.ethereum.request({
+          method: 'wallet_switchEthereumChain',
+          params: [{ chainId: SEPOLIA_HEX }],
+        });
+        provider = new BrowserProvider(window.ethereum);
+      }
+      signer = await provider.getSigner();
+      account = await signer.getAddress();
+      document.getElementById('addr').textContent = account;
+      document.getElementById('conn-status').textContent = 'connected';
+      document.getElementById('conn-status').dataset.state = 'connected';
+      document.getElementById('conn-status').className = 'status ok';
+      const usdc = new Contract(USDC, ERC20_ABI, provider);
+      const bal = await usdc.balanceOf(account);
+      document.getElementById('bal-before').textContent = formatUnits(bal, 6) + ' USDC';
+      if (bal < AMOUNT) {
+        setOutcome('err', 'need ≥1 USDC; balance is ' + formatUnits(bal, 6));
+        return;
+      }
+      document.getElementById('transfer-btn').disabled = false;
+      setOutcome('pending', 'connected — click Transfer');
+    } catch (e) {
+      setOutcome('err', 'connect failed: ' + (e.message || e));
+    }
+  });
+
+  document.getElementById('transfer-btn').addEventListener('click', async () => {
+    if (!signer) return;
+    const btn = document.getElementById('transfer-btn');
+    btn.disabled = true;
+    try {
+      setOutcome('pending', 'waiting for MetaMask confirmation…');
+      const usdc = new Contract(USDC, ERC20_ABI, signer);
+      document.getElementById('tx-status').textContent = 'sign-pending';
+      const tx = await usdc.transfer(DEAD, AMOUNT);
+      const full = document.getElementById('tx-hash-full');
+      full.textContent = tx.hash;
+      full.dataset.filled = 'yes';
+      document.getElementById('tx-status').textContent = 'mining';
+      setOutcome('pending', 'tx submitted: ' + tx.hash);
+      const r = await tx.wait(1);
+      if (r && r.status === 1) {
+        document.getElementById('tx-status').textContent = 'confirmed';
+        document.getElementById('tx-status').className = 'status ok';
+        const usdc2 = new Contract(USDC, ERC20_ABI, provider);
+        const balAfter = await usdc2.balanceOf(account);
+        document.getElementById('bal-after').textContent = formatUnits(balAfter, 6) + ' USDC';
+        setOutcome('ok',
+          'SUCCESS — transfer tx ' + tx.hash +
+          ', USDC balance now ' + formatUnits(balAfter, 6));
+      } else {
+        setOutcome('err', 'transfer reverted: ' + tx.hash);
+      }
+    } catch (e) {
+      setOutcome('err', 'transfer failed: ' + (e.message || e));
+    } finally {
+      btn.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>

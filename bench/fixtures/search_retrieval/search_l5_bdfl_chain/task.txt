@@ -1,0 +1,22 @@
+Multi-hop research starting on a DuckDuckGo SERP:
+
+  Hop 1 — Identify the PEP that introduced assignment expressions (the
+          walrus operator `:=`) to Python.
+  Hop 2 — Navigate (via `goto`) to that PEP on `peps.python.org`. Find
+          its `Resolution` header — it's a link to a python-dev mailing-
+          list post. That post URL has the form
+          `https://mail.python.org/pipermail/python-dev/<YYYY-Month>/<NNNNNN>.html`.
+          Extract both the year+month token (e.g. `2018-July`) AND the
+          6-digit post number (e.g. `154547`).
+
+Report in a single done PASS description, three things:
+  1. The PEP number (e.g. `PEP 572`).
+  2. The year+month token from the resolution URL (e.g. `2018-July`).
+  3. The 6-digit post number from the resolution URL (e.g. `154547`).
+
+Example format:
+  `done PASS "PEP 572 — Resolution: python-dev 2018-July, post 154601"`.
+
+All three pieces (PEP number, year+month token, 6-digit number) must
+appear verbatim in your description. If you cannot find the Resolution
+URL, done FAIL with a clear reason.

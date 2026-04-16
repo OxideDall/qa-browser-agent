@@ -1,0 +1,14 @@
+[fixture]
+id       = "spa_l1_todomvc"
+category = "spa_dynamic"
+level    = 1
+title    = "TodoMVC: add 3 items, complete the 2nd"
+
+[run]
+headless    = true
+max_steps   = 18
+
+[budget]
+max_steps        = 18
+max_tokens       = 40000
+max_wall_seconds = 90

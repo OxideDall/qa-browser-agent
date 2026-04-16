@@ -1,0 +1,14 @@
+[fixture]
+id       = "static_l4_wizard"
+category = "static_ui"
+level    = 4
+title    = "Walk through 4-step wizard, verify review echoes inputs"
+
+[run]
+headless    = true
+max_steps   = 25
+
+[budget]
+max_steps        = 25
+max_tokens       = 60000
+max_wall_seconds = 150

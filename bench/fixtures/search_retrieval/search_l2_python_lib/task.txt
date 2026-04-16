@@ -1,0 +1,15 @@
+You are on a search engine results page for "popular Python async HTTP client library".
+
+Pick ONE well-known Python library that matches these criteria and finish
+with done PASS quoting its exact name:
+
+  - async-capable (supports async/await out of the box)
+  - pure-Python HTTP client
+  - actively maintained with wide GitHub adoption (thousands of stars)
+
+Typical correct answers: `httpx`, `aiohttp`. (Don't pick `requests` —
+that one is sync-only. Don't pick `urllib3` — that's a lower-level
+transport, not a client. Don't pick `urllib` — stdlib sync.)
+
+Finish with e.g. `done PASS 'library: "httpx"'` — the exact name in
+inner quotes IS your evidence. If the SERP fails to load, done FAIL.

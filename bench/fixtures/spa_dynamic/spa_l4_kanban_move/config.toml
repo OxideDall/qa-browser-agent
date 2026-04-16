@@ -1,0 +1,14 @@
+[fixture]
+id       = "spa_l4_kanban_move"
+category = "spa_dynamic"
+level    = 4
+title    = "Move kanban cards between columns via arrow buttons"
+
+[run]
+headless    = true
+max_steps   = 25
+
+[budget]
+max_steps        = 25
+max_tokens       = 70000
+max_wall_seconds = 180

@@ -1,0 +1,17 @@
+This page shows a catalog of 50 widgets in a paginated list (10 per
+page) with a filter box at the top.
+
+Find the widget with SKU exactly `WDG-033` and click its "Select"
+button. It is not on the first page.
+
+You can either:
+  - Type `WDG-033` into the filter box to narrow the list, OR
+  - Click "Next" / "Prev" until you reach the right page.
+
+When selected, a green info bar appears saying:
+  "Selected: WDG-033 — <product name> — <tier>"
+
+Finish with done PASS quoting the `Selected: …` line verbatim. The
+SKU `WDG-033` IS your evidence.
+
+If the widget cannot be found after a reasonable search, done FAIL.

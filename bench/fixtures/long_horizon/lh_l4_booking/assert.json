@@ -1,0 +1,12 @@
+{
+  "checks": [
+    {"type": "agent_status", "expected": "PASS"},
+    {"type": "dom_text_contains", "selector": "#confirm h2", "value": "Booking confirmed"},
+    {"type": "dom_text", "selector": "#booking-ref", "expected": "BK-260501"},
+    {"type": "dom_text", "selector": "#summary-route", "expected": "Moscow → Saint Petersburg"},
+    {"type": "dom_text", "selector": "#summary-date", "expected": "2026-05-01"},
+    {"type": "dom_text", "selector": "#summary-seat", "expected": "12A"},
+    {"type": "dom_text", "selector": "#summary-name", "expected": "Maria Garcia"},
+    {"type": "dom_text", "selector": "#summary-class", "expected": "Economy"}
+  ]
+}

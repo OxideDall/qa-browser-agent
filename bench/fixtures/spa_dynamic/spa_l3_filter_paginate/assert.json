@@ -1,0 +1,8 @@
+{
+  "checks": [
+    {"type": "agent_status", "expected": "PASS"},
+    {"type": "dom_text", "selector": "#selected-sku", "expected": "WDG-033"},
+    {"type": "dom_text", "selector": "#selected-tier", "expected": "Premium"},
+    {"type": "dom_text", "selector": "#selected-name", "expected": "Photon Driver"}
+  ]
+}
