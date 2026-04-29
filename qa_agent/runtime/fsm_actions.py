@@ -24,7 +24,7 @@ from ..actions import execute_action, _el_info, parse_action
 from ..config import HISTORY_WINDOW, TEST_PASSWORD
 from ..llm import ask_llm
 from .actions import (
-    evidence_verdict, loop_check, snapshot_page, vision_retry,
+    detect_flicker, evidence_verdict, loop_check, snapshot_page, vision_retry,
 )
 from .ctx import AgentCtx, on_popup_opened, on_tx_trigger
 from .messages import DONE_REASK_MSG
@@ -55,6 +55,11 @@ def _new_step_record(ctx: AgentCtx) -> dict:
 def _emit_step(ctx: AgentCtx) -> None:
     """Idempotent per-step record emit. Safe to call multiple times; only the
     first call (per step_record) hits the on_step listener.
+
+    Also closes out the per-step diagnostics window: takes a final-state
+    screenshot, slices console/network/flicker logs since the previous
+    cursor into sr["console"]/["network"]/["flicker"], and advances the
+    cursors so the next step starts with a clean slice.
     """
     sr = ctx.step_record
     if sr is None or sr.get("_emitted"):
@@ -66,11 +71,104 @@ def _emit_step(ctx: AgentCtx) -> None:
         sr["mm_active"] = ctx.mm_popup_active is not None
     except Exception:
         pass
+
+    # Per-step screenshot. Filename embeds step number for stable
+    # ordering. Errors (closed page / extension page that disallows
+    # shots / missing dir) are tolerated silently — instrumentation
+    # must never break a run.
+    if ctx.screenshots_dir is not None:
+        kind = getattr(ctx, "driver_kind", "browser")
+        try:
+            if kind == "android" and ctx.android_device is not None:
+                shot = ctx.screenshots_dir / f"step_{ctx.step:03d}.png"
+                # uiautomator2's Device.screenshot(path) writes a PNG.
+                ctx.android_device.screenshot(str(shot))
+            elif kind == "browser" and ctx.page is not None:
+                shot = ctx.screenshots_dir / f"step_{ctx.step:03d}.jpg"
+                ctx.page.screenshot(
+                    path=str(shot), type="jpeg", quality=60,
+                    full_page=False, timeout=2000,
+                )
+            else:
+                shot = None
+            if shot is not None:
+                shot_str = str(shot)
+                sr["screenshot"] = shot_str
+                ctx.screenshots.append(shot_str)
+        except Exception:
+            pass
+
+    # Slice console / network / flicker logs accumulated since the
+    # previous step's _emit_step. Each gets its own cursor on ctx so
+    # the slices never overlap.
+    sr["console"] = ctx.console_log[ctx.console_cursor:]
+    ctx.console_cursor = len(ctx.console_log)
+    sr["network"] = ctx.network_errors[ctx.network_cursor:]
+    ctx.network_cursor = len(ctx.network_errors)
+    sr["flicker"] = ctx.flicker_log[ctx.flicker_cursor:]
+    ctx.flicker_cursor = len(ctx.flicker_log)
+
+    # Stash the diagnostic blurb on ctx — act_think on the next turn
+    # prepends it to its user_msg so we keep strict user/assistant
+    # alternation in ctx.messages.
+    diag_msg = _build_diag_msg(sr)
+    if diag_msg:
+        ctx.pending_diag = diag_msg
+        if ctx.verbose:
+            # Indent under the step label for readability.
+            for line in diag_msg.splitlines():
+                print(f"    {line}")
+
+    if sr.get("flicker"):
+        flap_count = sum(f.get("flaps", 0) for f in sr["flicker"])
+        if ctx.verbose:
+            sample = sr["flicker"][0]
+            print(
+                f"    [flicker] {len(sr['flicker'])} node(s), "
+                f"{flap_count} flaps total — first: "
+                f"{sample.get('node', '')[:60]} "
+                f"({sample.get('flaps', 0)} flaps in "
+                f"{sample.get('duration_ms', 0):.0f}ms)"
+            )
+
     if ctx.on_step:
         try:
             ctx.on_step({k: v for k, v in sr.items() if not k.startswith("_")})
         except Exception:
             pass
+
+
+def _build_diag_msg(sr: dict) -> str:
+    """Compact summary of console/network errors that arose during this
+    step. Returns "" if nothing notable happened — caller skips the inject.
+    Cap at 6 entries total to keep the LLM context lean.
+    """
+    console = [c for c in sr.get("console") or []
+               if c.get("level") in ("error", "pageerror", "warning")]
+    network = sr.get("network") or []
+    if not console and not network:
+        return ""
+    lines: list[str] = []
+    for c in console[:3]:
+        lvl = c.get("level", "?")
+        txt = (c.get("text") or "")[:160].replace("\n", " ")
+        lines.append(f"  [{lvl}] {txt}")
+    for n in network[:3]:
+        st = n.get("status") or n.get("kind") or "?"
+        url = (n.get("url") or "")[:120]
+        method = n.get("method") or "?"
+        lines.append(f"  [net {st}] {method} {url}")
+    if not lines:
+        return ""
+    extras = []
+    if len(console) > 3:
+        extras.append(f"{len(console) - 3} more console")
+    if len(network) > 3:
+        extras.append(f"{len(network) - 3} more network")
+    suffix = f" (+ {', '.join(extras)})" if extras else ""
+    return (
+        "[DIAG since last action]\n" + "\n".join(lines) + suffix
+    )
 
 
 # -----------------------------------------------------------------------
@@ -116,12 +214,22 @@ def act_think(ctx: AgentCtx) -> None:
 
     # Multi-turn with compressed history (same policy as pre-FSM loop):
     # first msg carries the task verbatim; later msgs just the snapshot.
+    # Prefix every turn with the step budget so the agent knows how many
+    # turns it still has — without this it tends to call `done` early on
+    # multi-turn tasks ("supervisor reply" style flows that need ≥ N
+    # exchanges before evidence is on the page).
+    remaining = max(0, ctx.max_steps - ctx.step)
+    budget_hdr = f"[step {ctx.step}/{ctx.max_steps} | budget: {remaining} left]\n"
+    diag_prefix = ""
+    if ctx.pending_diag:
+        diag_prefix = ctx.pending_diag.rstrip() + "\n\n"
+        ctx.pending_diag = ""
     if ctx.step == 1 and not ctx.messages:
-        user_msg = f"Task: {ctx.task}\n\n{elements_text}"
+        user_msg = f"{budget_hdr}{diag_prefix}Task: {ctx.task}\n\n{elements_text}"
     elif ctx.step == 1:
-        user_msg = f"Task: {ctx.task}\n\n{elements_text}"
+        user_msg = f"{budget_hdr}{diag_prefix}Task: {ctx.task}\n\n{elements_text}"
     else:
-        user_msg = elements_text
+        user_msg = budget_hdr + diag_prefix + elements_text
 
     # Post-tx verification nudge — one-shot.
     if ctx.pending_verification and ctx.mm_popup_active is None:
@@ -539,6 +647,17 @@ def act_exec(ctx: AgentCtx) -> None:
     ctx.step_record["result"] = result
     if ctx.verbose:
         print(f"    {result}")
+
+    # Drain MutationObserver buffer and detect flicker. We give the page
+    # 200ms to settle so async re-renders right after a click land in the
+    # buffer before we read it. Flicker entries that emerge here go onto
+    # ctx.flicker_log; _emit_step's slice picks them up for this step.
+    try:
+        ctx.page.wait_for_timeout(200)
+        for ev in detect_flicker(ctx.page):
+            ctx.flicker_log.append(ev)
+    except Exception:
+        pass
 
     # Tx-trigger detection.
     if (ctx.action == "click" and ctx.args

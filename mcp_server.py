@@ -13,21 +13,54 @@ Usage in .mcp.json or claude_desktop_config.json:
       "mcpServers": {
         "qa-browser": {
           "command": "/usr/bin/python3",
-          "args": ["mcp_server.py"]
+          "args": ["mcp_server.py"],
+          "env": {
+            "ANTHROPIC_API_KEY": "sk-ant-..."
+          }
         }
       }
     }
+
+MCP hosts spawn the server with an empty env, so provider API keys must
+either be set via the host's `"env"` block (shown above) or listed in a
+`.env` file in the repo root — this module auto-loads that file.
 """
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
 import time
 from pathlib import Path
 
+_ROOT = Path(__file__).resolve().parent
+
 # Allow importing qa_agent from this directory for status checks
-sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(_ROOT))
+
+
+def _load_dotenv(path: Path) -> None:
+    """Minimal .env loader — no python-dotenv dependency. Lines like
+    `KEY=value` or `KEY="value with spaces"` are honoured; existing env
+    wins (so the MCP host can still override with its own "env" block)."""
+    if not path.is_file():
+        return
+    for raw in path.read_text().splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, _, v = line.partition("=")
+        k = k.strip()
+        v = v.strip().strip('"').strip("'")
+        if k and k not in os.environ:
+            os.environ[k] = v
+
+
+# MCP hosts start mcp_server.py in a clean environment — pull in the
+# project-local .env so ANTHROPIC_API_KEY / OPENROUTER_API_KEY / etc.
+# reach the subprocess that actually runs the agent.
+_load_dotenv(_ROOT / ".env")
 
 from mcp.server.fastmcp import FastMCP
 
@@ -220,14 +253,29 @@ def qa_setup_metamask(headless: bool = True) -> dict:
 @mcp.tool()
 def qa_status() -> dict:
     """Check qa-browser-agent environment: OAuth credentials, MetaMask extension, browser profile."""
-    creds = qa_agent._load_credentials()
-    has_creds = creds is not None and bool(creds.get("accessToken"))
+    # _load_credentials lives in the gitignored qa_agent.oauth subpackage
+    # — only meaningful when LLM_PROVIDER=subscription. For env-key
+    # providers (anthropic / openrouter) the function is absent, so we
+    # treat its absence as "n/a" rather than crashing the tool.
+    has_creds: bool | None = None
+    try:
+        from qa_agent.oauth import _load_credentials  # type: ignore
+        creds = _load_credentials()
+        has_creds = creds is not None and bool(creds.get("accessToken"))
+    except ImportError:
+        has_creds = None
+
+    if has_creds is None:
+        oauth_status = "n/a (env-key provider)"
+    elif has_creds:
+        oauth_status = "present"
+    else:
+        oauth_status = "missing (run: python -m qa_agent --login)"
+
     mm_installed = qa_agent.METAMASK_EXT.exists()
     profile_exists = qa_agent.PROFILE_DIR.exists()
     return {
-        "oauth_credentials": (
-            "present" if has_creds else "missing (run: python -m qa_agent --login)"
-        ),
+        "oauth_credentials": oauth_status,
         "metamask_extension": (
             str(qa_agent.METAMASK_EXT) if mm_installed else "missing"
         ),
@@ -235,6 +283,7 @@ def qa_status() -> dict:
             str(qa_agent.PROFILE_DIR) if profile_exists else "missing"
         ),
         "model": qa_agent.MODEL,
+        "provider": os.environ.get("LLM_PROVIDER", "anthropic"),
     }
 
 

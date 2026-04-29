@@ -7,6 +7,60 @@ from playwright.sync_api import BrowserContext
 from .config import BROWSER_ARGS, PROFILE_DIR, STEALTH_INIT_SCRIPT, STEALTH_UA
 
 
+# Injected before any page script runs. Wires a MutationObserver to a
+# bounded ring buffer on `window.__qa_mutations`, plus a per-step reset
+# helper. The Python side polls + clears this buffer between agent steps
+# (runtime.actions.detect_flicker) — the browser-side cost is one
+# observer per page; the buffer caps at 5_000 records so heavy SPAs
+# can't OOM the page. Each entry has the bare minimum needed to call
+# the same DOM "node" out across attach/detach pairs (parent tag, child
+# tag, text fingerprint, and a high-resolution timestamp).
+MUTATION_INIT_SCRIPT = r"""
+(() => {
+  if (window.__qa_mutations) return;
+  const MAX = 5000;
+  const buf = [];
+  const fp = (n) => {
+    try {
+      if (!n) return '';
+      if (n.nodeType === 3) return 't:' + (n.nodeValue || '').slice(0, 32);
+      const tag = (n.nodeName || '?').toLowerCase();
+      const id = n.id ? '#' + n.id : '';
+      const cls = (n.className && typeof n.className === 'string')
+        ? '.' + n.className.split(/\s+/).filter(Boolean).slice(0, 3).join('.')
+        : '';
+      const txt = (n.textContent || '').trim().slice(0, 32);
+      return tag + id + cls + (txt ? '|' + txt : '');
+    } catch (e) { return '?'; }
+  };
+  const obs = new MutationObserver((records) => {
+    const now = performance.now();
+    for (const r of records) {
+      if (r.type !== 'childList') continue;
+      const parent = fp(r.target);
+      for (const n of r.addedNodes) {
+        buf.push({ t: now, kind: 'add', parent, node: fp(n) });
+      }
+      for (const n of r.removedNodes) {
+        buf.push({ t: now, kind: 'remove', parent, node: fp(n) });
+      }
+    }
+    if (buf.length > MAX) buf.splice(0, buf.length - MAX);
+  });
+  try {
+    obs.observe(document.documentElement || document, {
+      childList: true, subtree: true,
+    });
+  } catch (e) { /* document not yet ready — observer will attach on next frame */ }
+  window.__qa_mutations = {
+    drain: () => { const out = buf.slice(); buf.length = 0; return out; },
+    peek:  () => buf.slice(),
+    size:  () => buf.length,
+  };
+})();
+"""
+
+
 def _launch_browser(
     p,
     headless: bool,
@@ -48,6 +102,7 @@ def _launch_browser(
             viewport={"width": 1280, "height": 720},
         )
         context.add_init_script(STEALTH_INIT_SCRIPT)
+        context.add_init_script(MUTATION_INIT_SCRIPT)
         if init_script:
             context.add_init_script(init_script)
 
@@ -77,6 +132,7 @@ def _launch_browser(
         user_agent=STEALTH_UA,
     )
     context.add_init_script(STEALTH_INIT_SCRIPT)
+    context.add_init_script(MUTATION_INIT_SCRIPT)
     if init_script:
         context.add_init_script(init_script)
     page = context.new_page()

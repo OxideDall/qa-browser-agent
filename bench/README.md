@@ -56,9 +56,16 @@ Each run produces `results/runs/<fixture_id>__<iso_ts>.jsonl`:
 - `{"t": "step", "step": N, "action": ..., "args": ..., "result": ...,
    "in_tokens": ..., "out_tokens": ..., "page_url": ..., "loop_hit": ...,
    "blocked": ..., "done_reasked": ..., "evidence_present": ...,
-   "vision": ..., "latency_ms": ...}` — one per loop iteration
+   "vision": ..., "latency_ms": ..., "screenshot": "<path>",
+   "console": [...], "network": [...], "flicker": [...]}` —
+   one per loop iteration. `screenshot` is an absolute path to a per-step
+   JPEG (browser) / PNG (android). `console`, `network`, `flicker` are
+   slices of the per-run diagnostic streams that arose during this step
+   only — empty list if none.
 - `{"t": "result", "status": ..., "description": ..., "steps_used": ...,
-   "wall_seconds": ..., "total_in": ..., "total_out": ...}`
+   "wall_seconds": ..., "total_in": ..., "total_out": ...,
+   "screenshots": [paths], "console_errors": N, "network_errors": N,
+   "flicker_events": N}`
 - `{"t": "assert", "ok": bool, "msg": ..., "details": {...}}`
 
 ## Adding a new fixture

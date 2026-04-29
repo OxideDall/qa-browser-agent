@@ -140,11 +140,20 @@ def main() -> None:
     print(f"  Model: {args.model} | Provider: {provider}{ext_info}{init_info}")
 
     t_start = time.time()
+    # Stash the diagnostics summary captured by on_finish so we can fold
+    # screenshots / console-error / network-error / flicker counts into
+    # the JSON line emitted to MCP hosts.
+    finish_summary: dict = {}
+
+    def _capture_finish(rec: dict) -> None:
+        finish_summary.update(rec)
+
     try:
         status, description, steps_used = run_task(
             args.task, args.url, args.headless, args.verbose,
             args.max_steps, extensions or None,
             init_script=init_script_src,
+            on_finish=_capture_finish,
         )
     except Exception as e:
         if args.json_result:
@@ -162,5 +171,9 @@ def main() -> None:
             "description": description,
             "steps": steps_used,
             "elapsed": round(time.time() - t_start, 1),
+            "screenshots": finish_summary.get("screenshots", []),
+            "console_errors": finish_summary.get("console_errors", 0),
+            "network_errors": finish_summary.get("network_errors", 0),
+            "flicker_events": finish_summary.get("flicker_events", 0),
         })
     sys.exit(0 if status == "PASS" else 1)

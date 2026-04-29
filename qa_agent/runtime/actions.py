@@ -12,6 +12,8 @@ table that invokes exactly these functions via
 
 from __future__ import annotations
 
+import time
+from collections import defaultdict
 from typing import Any
 
 from ..actions import parse_action
@@ -22,6 +24,84 @@ from .ctx import on_done_reask
 from .evidence import has_evidence
 from .loop_detect import is_oscillating
 from .mm_popup import has_mm_action
+
+
+# ---------------------------------------------------------------------------
+# Flicker detection
+# ---------------------------------------------------------------------------
+
+# Two add/remove records on the *same* node fingerprint within this many
+# milliseconds of each other count as one flicker event. 500ms matches the
+# user's spec ("repeated add/remove of the same DOM node in <500ms").
+FLICKER_WINDOW_MS = 500
+# A single offender has to flap at least this many times before it's
+# reported — once-off layout shifts (e.g. a tooltip appearing then closing)
+# are not "flicker", they're normal interaction. Genuine flicker tends to
+# bounce 4+ times.
+FLICKER_MIN_FLAPS = 4
+
+
+def detect_flicker(page: Any) -> list[dict]:
+    """Drain `window.__qa_mutations` from the page and return a list of
+    flicker events that occurred since the last drain.
+
+    Each event has shape `{"node": "<fingerprint>", "parent": "...",
+    "flaps": int, "first_ms": float, "last_ms": float}`. Callers append
+    these to `ctx.flicker_log`; `_emit_step` slices that log per-step.
+
+    Browser-only — call sites must guard `ctx.driver_kind == "browser"`.
+    """
+    try:
+        records = page.evaluate(
+            "() => (window.__qa_mutations && window.__qa_mutations.drain()) || []"
+        )
+    except Exception:
+        return []
+    if not records:
+        return []
+
+    # Group by node fingerprint, count how many add+remove flaps each one
+    # experienced and over what window. A "flap" requires an add followed
+    # by a remove (or vice versa) within FLICKER_WINDOW_MS. We don't need
+    # exact pair matching — counting transitions per node is enough.
+    by_node: dict[str, list[dict]] = defaultdict(list)
+    for r in records:
+        n = r.get("node") or ""
+        if not n:
+            continue
+        by_node[n].append(r)
+
+    out: list[dict] = []
+    now = time.time()
+    for node, evs in by_node.items():
+        if len(evs) < FLICKER_MIN_FLAPS:
+            continue
+        evs.sort(key=lambda e: e.get("t") or 0.0)
+        # Count alternating kind transitions inside a sliding window.
+        flaps = 0
+        first_t = evs[0].get("t") or 0.0
+        last_t = evs[-1].get("t") or 0.0
+        if last_t - first_t > FLICKER_WINDOW_MS * (len(evs) // 2 + 1):
+            # Spread far too wide — not a single burst. Skip.
+            continue
+        prev_kind = None
+        for e in evs:
+            kind = e.get("kind")
+            if prev_kind and kind != prev_kind:
+                flaps += 1
+            prev_kind = kind
+        if flaps < FLICKER_MIN_FLAPS:
+            continue
+        out.append({
+            "ts": now,
+            "node": node[:200],
+            "parent": (evs[0].get("parent") or "")[:120],
+            "flaps": flaps,
+            "first_ms": first_t,
+            "last_ms": last_t,
+            "duration_ms": last_t - first_t,
+        })
+    return out
 
 
 # -----------------------------------------------------------------------

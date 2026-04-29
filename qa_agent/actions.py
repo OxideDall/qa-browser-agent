@@ -5,7 +5,7 @@ from datetime import datetime
 
 from playwright.sync_api import Page, TimeoutError as PwTimeout
 
-from .config import SCREENSHOT_DIR, STEP_TIMEOUT, NAV_TIMEOUT
+from .config import MAX_WAIT_MS, SCREENSHOT_DIR, STEP_TIMEOUT, NAV_TIMEOUT
 
 
 def parse_action(response_text: str) -> tuple[str, list[str]]:
@@ -64,7 +64,7 @@ def parse_action(response_text: str) -> tuple[str, list[str]]:
         return ("goto", [rest.strip()])
     if cmd == "wait":
         try:
-            ms = str(min(int(rest.strip()), 3000))
+            ms = str(max(0, min(int(rest.strip()), MAX_WAIT_MS)))
         except ValueError:
             ms = "500"
         return ("wait", [ms])

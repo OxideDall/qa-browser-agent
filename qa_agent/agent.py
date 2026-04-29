@@ -10,12 +10,117 @@ qa_agent/runtime/{fsm,fsm_actions,transitions,states}.py.
 import os
 import re
 import time
+from datetime import datetime
+from pathlib import Path
 from typing import Callable
 
 from playwright.sync_api import Page, sync_playwright
 
 from .browser import _launch_browser
-from .config import NAV_TIMEOUT, STEP_TIMEOUT
+from .config import NAV_TIMEOUT, SCREENSHOT_DIR, STEP_TIMEOUT
+
+
+_CONSOLE_ERROR_LEVELS = frozenset({"error", "pageerror"})
+
+
+def _count_console_errors(log: list[dict]) -> int:
+    """How many entries in `console_log` are error-level (errors + uncaught)."""
+    return sum(1 for r in log if r.get("level") in _CONSOLE_ERROR_LEVELS)
+
+
+def _attach_diagnostics(ctx) -> None:
+    """Wire console / pageerror / network listeners onto every page in the
+    BrowserContext. New tabs (extension popups, target=_blank links) get
+    the same listeners via the `context.on("page", ...)` hook.
+
+    Captured records land on `ctx.console_log` and `ctx.network_errors`
+    as append-only lists; per-step _emit_step slices them into the
+    step record using ctx.console_cursor / ctx.network_cursor.
+    """
+    def _attach_to_page(pg) -> None:
+        # console messages — capture level + text + location.
+        def _on_console(msg) -> None:
+            try:
+                level = msg.type
+                text = msg.text
+            except Exception:
+                return
+            try:
+                loc = msg.location or {}
+            except Exception:
+                loc = {}
+            ctx.console_log.append({
+                "ts": time.time(),
+                "level": level,
+                "text": text[:1000],
+                "url": (loc.get("url") or pg.url or "")[:200],
+                "line": loc.get("lineNumber"),
+            })
+
+        # uncaught JS exceptions (promise rejections, throw on event handlers).
+        def _on_pageerror(exc) -> None:
+            try:
+                msg = str(exc)
+            except Exception:
+                msg = "<pageerror>"
+            ctx.console_log.append({
+                "ts": time.time(),
+                "level": "pageerror",
+                "text": msg[:2000],
+                "url": (pg.url or "")[:200],
+            })
+
+        try:
+            pg.on("console", _on_console)
+            pg.on("pageerror", _on_pageerror)
+        except Exception:
+            pass
+
+    # Per-context: response failures (4xx/5xx) and request failures.
+    def _on_response(resp) -> None:
+        try:
+            st = resp.status
+            if st < 400:
+                return
+            req = resp.request
+            ctx.network_errors.append({
+                "ts": time.time(),
+                "kind": "http",
+                "status": st,
+                "method": req.method,
+                "url": resp.url[:300],
+                "type": req.resource_type,
+            })
+        except Exception:
+            pass
+
+    def _on_request_failed(req) -> None:
+        try:
+            ctx.network_errors.append({
+                "ts": time.time(),
+                "kind": "failed",
+                "status": None,
+                "method": req.method,
+                "url": req.url[:300],
+                "type": req.resource_type,
+                "failure": (req.failure or "")[:200],
+            })
+        except Exception:
+            pass
+
+    try:
+        ctx.context.on("response", _on_response)
+        ctx.context.on("requestfailed", _on_request_failed)
+    except Exception:
+        pass
+
+    # Attach to existing pages and any new ones spawned later.
+    for pg in ctx.context.pages:
+        _attach_to_page(pg)
+    try:
+        ctx.context.on("page", _attach_to_page)
+    except Exception:
+        pass
 
 
 SYSTEM_PROMPT = """QA browser agent. Snapshot → one action. No prose.
@@ -65,7 +170,23 @@ Unsure → look.
 MUST cite: inner quoted UI text (≥5 chars) OR tx hash 0x...
 OK:  done PASS 'toast: "Supply complete"'
 OK:  done PASS "tx 0xabc123def received"
-BAD: done PASS "successful" / "completed" / "done" / "works"  (no source → REJECTED)"""
+BAD: done PASS "successful" / "completed" / "done" / "works"  (no source → REJECTED)
+
+## Step budget & diagnostics
+Every user msg starts with `[step N/M | budget: K left]`. K is steps you
+still have. **Don't `done` early just because the surface looks calm** —
+if the task says "wait N turns / supervisor reply / 25s wait", spend
+the budget. Use `wait <ms>` (cap 60000) to wait deterministically.
+
+If a `[DIAG since last action]` block precedes the snapshot, real
+console / network errors fired during the previous action. Treat them
+as evidence:
+  - `[error] Failed to fetch ...` or `[net 401] POST /api/...` → the
+    previous action did NOT silently succeed. Do not done PASS the
+    feature; either retry, or done FAIL citing the error verbatim.
+  - `[error] Cannot read properties of undefined ...` → JS crash on the
+    page, the UI you see may be stale.
+A diag block is only emitted on real errors — silence means clean."""
 
 
 ANDROID_SYSTEM_PROMPT = """QA Android agent. Snapshot → one action. No prose.
@@ -109,7 +230,13 @@ inner-quoted text that's actually on the screen, a number+unit pair
 (e.g. "299 ₽"), a product title, or a resource-id-anchored value.
 OK:  done PASS 'toast: "Заказ оформлен"'
 OK:  done PASS "top card: Отвёртка крестовая — 199 ₽"
-BAD: done PASS "search worked" / "found results" (no source → REJECTED)"""
+BAD: done PASS "search worked" / "found results" (no source → REJECTED)
+
+## Step budget
+Every user msg starts with `[step N/M | budget: K left]`. K is steps
+you still have. Don't `done` early just because the surface looks
+calm — if the task implies multiple turns ("wait N seconds", "scroll
+through 5 cards"), spend the budget. Use `wait <ms>` (cap 60000)."""
 
 
 from .runtime.ctx import AgentCtx  # noqa: E402
@@ -157,6 +284,22 @@ def run_task(task: str, url: str | None, headless: bool, verbose: bool,
             profile_dir=profile_dir,
         )
         ctx.page.set_default_timeout(STEP_TIMEOUT)
+
+        # Per-run screenshot directory (one per run_task invocation).
+        # Format: qa_screenshots/run_<UTC ts>_<pid>/  — collision-free across
+        # concurrent runs.
+        ctx.screenshots_dir = (
+            SCREENSHOT_DIR
+            / f"run_{datetime.utcnow().strftime('%Y%m%dT%H%M%S')}_{os.getpid()}"
+        )
+        try:
+            ctx.screenshots_dir.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            ctx.screenshots_dir = None
+
+        # Wire console/network/pageerror diagnostics BEFORE the agent does
+        # anything. After this point every event the SPA fires is captured.
+        _attach_diagnostics(ctx)
 
         # Track new popup/tab pages (MetaMask opens approval popups).
         _new_pages: list[Page] = []
@@ -217,6 +360,10 @@ def run_task(task: str, url: str | None, headless: bool, verbose: bool,
                     "total_in": ctx.total_in,
                     "total_out": ctx.total_out,
                     "max_steps": max_steps,
+                    "screenshots": list(ctx.screenshots),
+                    "console_errors": _count_console_errors(ctx.console_log),
+                    "network_errors": len(ctx.network_errors),
+                    "flicker_events": len(ctx.flicker_log),
                 })
             except Exception:
                 pass
@@ -281,6 +428,16 @@ def run_android_task(task: str, package: str | None, *,
 
     device = connect_device(serial)
     ctx.android_device = device
+
+    # Per-run screenshot directory, parity with the browser path.
+    ctx.screenshots_dir = (
+        SCREENSHOT_DIR
+        / f"run_android_{datetime.utcnow().strftime('%Y%m%dT%H%M%S')}_{os.getpid()}"
+    )
+    try:
+        ctx.screenshots_dir.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        ctx.screenshots_dir = None
 
     # Wake + unlock up-front. The phone is on a dev keyguard without a
     # PIN, so `unlock()` + a fallback upward swipe reliably lands on the
@@ -352,6 +509,10 @@ def run_android_task(task: str, package: str | None, *,
                 "total_in": ctx.total_in,
                 "total_out": ctx.total_out,
                 "max_steps": max_steps,
+                "screenshots": list(ctx.screenshots),
+                "console_errors": 0,         # android: no console capture
+                "network_errors": 0,         # android: no http capture
+                "flicker_events": 0,
             })
         except Exception:
             pass

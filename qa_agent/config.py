@@ -18,6 +18,14 @@ NAV_TIMEOUT = 15_000
 HISTORY_WINDOW = 10
 DEFAULT_MAX_STEPS = 30
 
+# Hard cap on how long a single `wait <ms>` DSL action may sleep. Was
+# 3_000 originally — too low for tests that deliberately wait on a slow
+# backend reply ("wait 25000" for a supervisor turn). 60s gives slow
+# flows headroom while still bounding agent stalls. Override via env
+# `QA_MAX_WAIT_MS` for one-off long-wait fixtures.
+import os as _os                       # noqa: E402
+MAX_WAIT_MS = int(_os.environ.get("QA_MAX_WAIT_MS", "60000"))
+
 # ── Paths ─────────────────────────────────────────────────────
 SCREENSHOT_DIR = Path("qa_screenshots")
 PROFILE_DIR = Path.home() / ".config" / "qa_agent" / "browser_profile"

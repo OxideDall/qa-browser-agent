@@ -51,6 +51,29 @@ class AgentCtx:
     pending_verification: dict | None = None
     done_reasks: int = 0
 
+    # --- diagnostics: console / network / screenshots --------------------
+    # Append-only logs populated by listeners attached in run_task. The
+    # *_cursor fields track how much each step's _emit_step has already
+    # consumed; the per-step slice goes into step_record["console"] /
+    # step_record["network"] / step_record["mutations"] so bench logs
+    # carry exactly what surfaced during that step (not the whole run
+    # history every step).
+    console_log: list[dict] = field(default_factory=list)
+    network_errors: list[dict] = field(default_factory=list)
+    flicker_log: list[dict] = field(default_factory=list)
+    console_cursor: int = 0
+    network_cursor: int = 0
+    flicker_cursor: int = 0
+    # Per-run screenshot output dir (populated in run_task before the FSM
+    # starts). Per-step screenshot paths get appended to `screenshots`
+    # and also written into step_record["screenshot"].
+    screenshots_dir: Any = None           # pathlib.Path | None
+    screenshots: list[str] = field(default_factory=list)
+    # Pending diagnostic blurb stashed by _emit_step, consumed (and
+    # cleared) by act_think on the very next turn so the message
+    # alternation user/assistant stays clean.
+    pending_diag: str = ""
+
     # --- result / timing -------------------------------------------------
     status: str = "ERROR"
     description: str = "Max steps reached"
