@@ -314,6 +314,26 @@ def act_classify(ctx: AgentCtx) -> None:
     ctx.step_record["args"] = list(args)
     ctx.prev_actions.append(f"{action}:{':'.join(args)}")
 
+    # Parse-error throttle. The agent occasionally drifts into prose
+    # ("The screenshot was taken. The DSL snapshot shows..."), the
+    # nudge in act_nudge_invalid asks it to retry, but if 3 turns in
+    # a row come back as prose the agent isn't going to recover —
+    # bail with a forced FAIL instead of burning the whole budget.
+    if action == "error":
+        ctx.parse_errors += 1
+        if ctx.parse_errors >= 3:
+            raw = (ctx.resp_text or "").strip().replace("\n", " ")[:160]
+            ctx.args = [
+                "FAIL",
+                f"3 consecutive parse errors — agent emitted prose "
+                f"instead of DSL. Last raw: {raw!r}",
+            ]
+            ctx.action = "done"
+            ctx.send_event(AgentEvent.PARSED_DONE_FAIL)
+            return
+    else:
+        ctx.parse_errors = 0
+
     if action == "done":
         status = args[0] if args else "PASS"
         if status == "FAIL":
@@ -585,6 +605,33 @@ def _run_vision(ctx: AgentCtx, reason: str) -> None:
     ctx.resp_text = resp_text
     if ctx.verbose:
         print(f"    vision decided: {resp_text.strip()}")
+
+    # Vision-stuck break. Loop-vision is supposed to break stalls by
+    # picking a *different* action when the agent is repeating itself.
+    # If vision keeps returning the same action across consecutive
+    # forced-vision invocations, we're not breaking the stall — we're
+    # just burning steps. Force FAIL so the operator sees the truth.
+    if reason == "loop":
+        cur = f"{action}:{':'.join(args)}"
+        if cur == ctx.last_vision_act:
+            ctx.vision_repeat += 1
+        else:
+            ctx.vision_repeat = 1
+            ctx.last_vision_act = cur
+        if ctx.vision_repeat >= 2 and action != "done":
+            ctx.args = [
+                "FAIL",
+                f"Vision stuck: returned `{cur}` "
+                f"{ctx.vision_repeat}× under loop-vision. Page state "
+                f"is not advancing.",
+            ]
+            ctx.action = "done"
+            print(
+                f"  {ctx.label} VISION STUCK: `{cur}` repeated "
+                f"{ctx.vision_repeat}×, forcing FAIL"
+            )
+            ctx.send_event(AgentEvent.PARSED_DONE_FAIL)
+            return
 
     # Cross-check: vision sometimes hallucinates element ids ("click 99
     # to expand the alert" when 99 isn't on the page). The DSL snapshot

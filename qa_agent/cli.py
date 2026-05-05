@@ -64,6 +64,12 @@ def main() -> None:
     parser.add_argument("--json-result", action="store_true",
                         help="Emit a JSON result line to stdout; route logs to stderr "
                              "(used by the MCP wrapper)")
+    parser.add_argument("--http-creds",
+                        help="Basic-auth credentials for the entire "
+                             "BrowserContext, format `user:pass`. Forwarded "
+                             "to Playwright's http_credentials kwarg — "
+                             "resolves Basic-auth challenges on every "
+                             "navigation/fetch/EventSource transparently.")
 
     args = parser.parse_args()
 
@@ -120,6 +126,23 @@ def main() -> None:
             sys.exit(1)
         extensions.append(str(METAMASK_EXT))
 
+    http_creds: dict | None = None
+    if args.http_creds:
+        if ":" not in args.http_creds:
+            msg = (
+                "--http-creds must be `user:pass` (got: no colon). "
+                "Use --help for details."
+            )
+            print(msg, file=sys.stderr)
+            if args.json_result:
+                _emit_json(original_stdout, {
+                    "status": "ERROR", "description": msg,
+                    "steps": 0, "elapsed": 0.0,
+                })
+            sys.exit(1)
+        u, _, p = args.http_creds.partition(":")
+        http_creds = {"username": u, "password": p}
+
     init_script_src: str | None = None
     if args.init_script:
         try:
@@ -159,6 +182,7 @@ def main() -> None:
             args.max_steps, extensions or None,
             init_script=init_script_src,
             on_finish=_capture_finish,
+            http_credentials=http_creds,
         )
     except Exception as e:
         if args.json_result:

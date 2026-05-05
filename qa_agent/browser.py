@@ -67,6 +67,7 @@ def _launch_browser(
     extensions: list[str] | None = None,
     init_script: str | None = None,
     profile_dir: Path | None = None,
+    http_credentials: dict | None = None,
 ):
     """Launch browser. Returns (context, page, needs_close_browser).
 
@@ -82,6 +83,12 @@ def _launch_browser(
     `profile_dir` overrides the default persistent-context directory — used by
     bench to isolate the benchmark wallet from any pre-existing qa_agent
     profile. Only meaningful for the extensions path.
+
+    `http_credentials` is forwarded to Playwright's context kwarg of the
+    same name — `{"username": "...", "password": "..."}`. When set,
+    Basic-auth challenges on every navigation/fetch/EventSource in the
+    context resolve transparently. Use this instead of an init_script
+    fetch-monkeypatch when the target sits behind HTTP Basic.
     """
     if extensions:
         prof = profile_dir if profile_dir is not None else PROFILE_DIR
@@ -94,13 +101,15 @@ def _launch_browser(
         if headless:
             args.append("--headless=new")
 
-        context = p.chromium.launch_persistent_context(
-            str(prof),
+        ctx_kwargs: dict = dict(
             headless=False,  # managed by --headless=new arg
             args=args,
             user_agent=STEALTH_UA,
             viewport={"width": 1280, "height": 720},
         )
+        if http_credentials:
+            ctx_kwargs["http_credentials"] = http_credentials
+        context = p.chromium.launch_persistent_context(str(prof), **ctx_kwargs)
         context.add_init_script(STEALTH_INIT_SCRIPT)
         context.add_init_script(MUTATION_INIT_SCRIPT)
         if init_script:
@@ -127,10 +136,13 @@ def _launch_browser(
     if headless:
         args.append("--headless=new")
     browser = p.chromium.launch(headless=False, args=args)
-    context = browser.new_context(
+    ctx_kwargs: dict = dict(
         viewport={"width": 1280, "height": 720},
         user_agent=STEALTH_UA,
     )
+    if http_credentials:
+        ctx_kwargs["http_credentials"] = http_credentials
+    context = browser.new_context(**ctx_kwargs)
     context.add_init_script(STEALTH_INIT_SCRIPT)
     context.add_init_script(MUTATION_INIT_SCRIPT)
     if init_script:

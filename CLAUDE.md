@@ -153,6 +153,18 @@ When console/network produced anything error-level during a step, `_emit_step` b
 
 Paths surface in the final summary as `console_log_path`, `network_log_path`, `flicker_log_path`, `done_reasks_log_path`. The full `done_reasks_log` is also inlined in the summary so MCP callers don't need to read the file.
 
+### Failure-mode breakers — finite badges per run
+
+Three counters on `AgentCtx` short-circuit otherwise-budget-burning loops:
+
+- **`parse_errors`** (`runtime/fsm_actions.py::act_classify`). Increments on every `parse_action` returning `("error", ...)`, resets on any clean parse. Reaching `3` forces `PARSED_DONE_FAIL` with `"3 consecutive parse errors — agent emitted prose instead of DSL. Last raw: ..."`. Catches the failure mode where the LLM drifts into narration ("The screenshot was taken. The DSL snapshot shows...") and the gentle nudge alone doesn't recover it.
+- **`vision_repeat`** (`runtime/fsm_actions.py::_run_vision`, only on `reason="loop"`). Increments when forced-vision returns the **same** action it returned last time, resets on a different action. Reaching `2` forces `PARSED_DONE_FAIL` with `"Vision stuck: returned `<action>` 2× under loop-vision. Page state is not advancing."`. Catches the failure mode where vision keeps re-confirming a click that the page isn't responding to — instead of burning 5+ steps clicking the same thing, fail visibly.
+- **`done_reasks`** (existing — `runtime/actions.py::evidence_verdict`). `≥2` forces `REASKS_EXHAUSTED → DONE_FAIL`. Reasons of every reask now in `done_reasks_log`.
+
+### `--http-creds user:pass` for Basic auth
+
+CLI flag (`--http-creds user:pass`) and MCP `qa_run(http_credentials={"username":..., "password":...})` forward to Playwright's `http_credentials` context kwarg. Resolves Basic-auth challenges across every navigation, fetch, **and EventSource** in the context — the latter is why a `fetch`-monkeypatch via `init_script` isn't enough (SSE doesn't accept custom request headers, so an injected fetch wrapper breaks streaming endpoints).
+
 ### Vision hallucination guard (`runtime/fsm_actions.py::_run_vision`)
 
 Haiku in vision mode sometimes returns `click N` / `type N "..."` with `N` that isn't actually present in the DSL snapshot. The cross-check rejects these: it compares the parsed action's id against the live snapshot ids, appends a `REJECTED ... id N is NOT in the current page snapshot. The snapshot has ids: [...]` user message, sets `step_record["vision_hallucinated"] = {action, id, valid_ids}`, and re-enters `SNAPSHOTTING` so the agent picks again. This catches the most expensive failure mode: vision confidently fabricating an action the page can't satisfy.

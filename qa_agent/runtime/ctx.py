@@ -78,6 +78,14 @@ class AgentCtx:
     # so the operator can see WHY the gate kept rejecting (not just that
     # it did). Surfaced in the final summary as `done_reasks_log`.
     done_reasks_log: list[dict] = field(default_factory=list)
+    # Consecutive parse errors. Reset when any action parses cleanly.
+    # 3 in a row triggers a forced FAIL — agent is emitting prose
+    # instead of DSL and won't recover from a polite nudge.
+    parse_errors: int = 0
+    # Last vision-forced action (action:args) + how many times vision
+    # has returned that same string. ≥2 → forced FAIL ("vision stuck").
+    last_vision_act: str = ""
+    vision_repeat: int = 0
 
     # --- result / timing -------------------------------------------------
     status: str = "ERROR"

@@ -141,10 +141,11 @@ def qa_run(
     task: str,
     url: str | None = None,
     headless: bool = True,
-    max_steps: int = 30,
+    max_steps: int = 60,
     metamask: bool = False,
     extensions: list[str] | None = None,
     init_script: str | None = None,
+    http_credentials: dict | None = None,
 ) -> dict:
     """Run a browser QA task. Claude Haiku drives Playwright to test web apps.
 
@@ -152,7 +153,7 @@ def qa_run(
         task: Natural language description of what to test.
         url: Starting URL (auto-detected from task if omitted).
         headless: Run browser headless. Default True.
-        max_steps: Maximum agent steps before timeout. Default 30.
+        max_steps: Maximum agent steps before timeout. Default 60.
         metamask: Load bundled MetaMask extension (requires prior setup).
         extensions: Paths to additional unpacked extensions.
         init_script: Optional JavaScript source injected via Playwright
@@ -161,6 +162,12 @@ def qa_run(
             SPA bundle and inline <script> tags. Use to pre-seed
             localStorage/sessionStorage/cookies with an auth session,
             monkey-patch fetch, install console hooks, etc.
+        http_credentials: Optional `{"username": "...", "password": "..."}`
+            forwarded to Playwright's context kwarg of the same name.
+            Resolves Basic-auth challenges across every
+            navigation/fetch/EventSource in the context. Use this rather
+            than monkey-patching fetch — EventSource doesn't accept
+            custom headers, so an init_script wrapper breaks SSE.
 
     Returns:
         dict with keys: status (PASS/FAIL/ERROR), description, steps, elapsed, log.
@@ -186,6 +193,16 @@ def qa_run(
         cli_args += ["--url", url]
     for ext in extensions or []:
         cli_args += ["--extension", ext]
+    if http_credentials:
+        u = http_credentials.get("username", "")
+        p = http_credentials.get("password", "")
+        if not u:
+            return {
+                "status": "ERROR",
+                "description": "http_credentials needs `username` and `password` keys",
+                "steps": 0, "elapsed": 0.0, "log": "",
+            }
+        cli_args += ["--http-creds", f"{u}:{p}"]
 
     # init_script is passed as JS source over MCP; write to a temp file and
     # hand the path to the CLI. Guaranteed cleanup after _run_cli returns.

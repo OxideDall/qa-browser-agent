@@ -16,7 +16,7 @@ MODEL = "claude-haiku-4-5"
 STEP_TIMEOUT = 10_000
 NAV_TIMEOUT = 15_000
 HISTORY_WINDOW = 10
-DEFAULT_MAX_STEPS = 30
+DEFAULT_MAX_STEPS = 60
 
 # Hard cap on how long a single `wait <ms>` DSL action may sleep. Was
 # 3_000 originally — too low for tests that deliberately wait on a slow

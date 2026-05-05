@@ -297,6 +297,7 @@ def run_task(task: str, url: str | None, headless: bool, verbose: bool,
              on_finish: Callable[[dict], None] | None = None,
              before_close: Callable[[Page, "object"], None] | None = None,
              profile_dir=None,
+             http_credentials: dict | None = None,
              ) -> tuple[str, str, int]:
     """Run a QA task end-to-end. Returns (status, description, steps_used).
 
@@ -326,6 +327,7 @@ def run_task(task: str, url: str | None, headless: bool, verbose: bool,
         ctx.context, ctx.page, _has_browser = _launch_browser(
             p, headless, extensions, init_script=init_script,
             profile_dir=profile_dir,
+            http_credentials=http_credentials,
         )
         ctx.page.set_default_timeout(STEP_TIMEOUT)
 
