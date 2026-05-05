@@ -56,16 +56,22 @@ Each run produces `results/runs/<fixture_id>__<iso_ts>.jsonl`:
 - `{"t": "step", "step": N, "action": ..., "args": ..., "result": ...,
    "in_tokens": ..., "out_tokens": ..., "page_url": ..., "loop_hit": ...,
    "blocked": ..., "done_reasked": ..., "evidence_present": ...,
-   "vision": ..., "latency_ms": ..., "screenshot": "<path>",
-   "console": [...], "network": [...], "flicker": [...]}` —
-   one per loop iteration. `screenshot` is an absolute path to a per-step
-   JPEG (browser) / PNG (android). `console`, `network`, `flicker` are
-   slices of the per-run diagnostic streams that arose during this step
-   only — empty list if none.
+   "vision": ..., "latency_ms": ..., "screenshot": "<post-path>",
+   "screenshot_pre": "<pre-path>", "console": [...], "network": [...],
+   "flicker": [...], "vision_hallucinated": {...}?}` —
+   one per loop iteration. `screenshot` (post-action) and
+   `screenshot_pre` (pre-action, only on `act_exec` steps) are paths to
+   per-step JPEG (browser, full_page) / PNG (android). `console`,
+   `network`, `flicker` are slices of the per-run diagnostic streams
+   that arose during this step only. `vision_hallucinated` appears
+   only when the vision cross-check rejected a fabricated id.
 - `{"t": "result", "status": ..., "description": ..., "steps_used": ...,
    "wall_seconds": ..., "total_in": ..., "total_out": ...,
-   "screenshots": [paths], "console_errors": N, "network_errors": N,
-   "flicker_events": N}`
+   "screenshots": [paths], "screenshots_dir": "...",
+   "console_errors": N, "network_errors": N, "flicker_events": N,
+   "done_reasks_log": [{step, description, reason, verdict}, ...],
+   "console_log_path": "...", "network_log_path": "...",
+   "flicker_log_path": "...", "done_reasks_log_path": "..."}`
 - `{"t": "assert", "ok": bool, "msg": ..., "details": {...}}`
 
 ## Adding a new fixture

@@ -73,6 +73,11 @@ class AgentCtx:
     # cleared) by act_think on the very next turn so the message
     # alternation user/assistant stays clean.
     pending_diag: str = ""
+    # Per-run done-PASS reasks: every time the evidence gate sends a
+    # `done PASS` back for a re-ask, append {step, description, reason}
+    # so the operator can see WHY the gate kept rejecting (not just that
+    # it did). Surfaced in the final summary as `done_reasks_log`.
+    done_reasks_log: list[dict] = field(default_factory=list)
 
     # --- result / timing -------------------------------------------------
     status: str = "ERROR"

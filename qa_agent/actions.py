@@ -1,11 +1,17 @@
 """Action DSL: parse + execute. DSL is what the LLM emits (click/type/goto/...)."""
 
+import json
 import re
 from datetime import datetime
 
 from playwright.sync_api import Page, TimeoutError as PwTimeout
 
 from .config import MAX_WAIT_MS, SCREENSHOT_DIR, STEP_TIMEOUT, NAV_TIMEOUT
+
+# Cap for stringified `evaluate` result returned to the LLM. Past this we
+# truncate so a runaway DOM-dump can't blow the context window. Whole
+# untruncated value goes into ctx.last_result for the recorder.
+EVAL_RESULT_MAX = 1500
 
 
 def parse_action(response_text: str) -> tuple[str, list[str]]:
@@ -19,6 +25,7 @@ def parse_action(response_text: str) -> tuple[str, list[str]]:
         if candidate and candidate.split()[0] in (
             "click", "type", "select", "hover", "scroll",
             "goto", "wait", "done", "screenshot", "look", "tab", "press",
+            "evaluate",
         ):
             line = candidate
             break
@@ -79,6 +86,13 @@ def parse_action(response_text: str) -> tuple[str, list[str]]:
         return ("look", [])
     if cmd == "tab":
         return ("tab", [rest.strip()])
+    if cmd == "evaluate":
+        # Whole rest of the line is JS — no quote-stripping (the JS itself
+        # may need single/double quotes for selectors / strings).
+        expr = rest.strip()
+        if not expr:
+            return ("error", ["evaluate: empty expression"])
+        return ("evaluate", [expr])
     if cmd == "press":
         key = rest.strip()
         # Normalize common variants
@@ -96,6 +110,58 @@ def parse_action(response_text: str) -> tuple[str, list[str]]:
         key = alias.get(key.lower(), key)
         return ("press", [key])
     return ("error", [f"Unknown action: {cmd}"])
+
+
+def _execute_evaluate(page: Page, js_expr: str) -> str:
+    """Run a JS expression in the page; return a stringified result.
+
+    Wraps the expression as a function so multi-statement / arrow forms
+    "just work". Stringifies via JSON for objects/arrays, falls back to
+    `String(...)` for cyclic / non-serialisable values. Truncates at
+    EVAL_RESULT_MAX so a runaway dump can't blow the LLM context.
+    """
+    expr = js_expr.strip()
+    # If user already wrote a function literal, use as-is. Otherwise wrap
+    # so a bare expression / multi-statement IIFE both work.
+    if expr.startswith(("()", "function", "async ", "(async")):
+        wrapped = expr
+    else:
+        wrapped = (
+            "() => { try { const __r = ("
+            + expr
+            + "); if (__r === undefined) return '<undefined>';"
+            + "  if (__r === null) return null;"
+            + "  if (typeof __r === 'object') {"
+            + "    try { return JSON.parse(JSON.stringify(__r)); }"
+            + "    catch (e) { return String(__r); }"
+            + "  }"
+            + "  return __r;"
+            + "} catch (e) { return '__EVAL_THROW__:' + (e && e.message || String(e)); } }"
+        )
+    try:
+        result = page.evaluate(wrapped)
+    except Exception as e:
+        return f"EVAL_ERROR: {type(e).__name__}: {str(e)[:300]}"
+
+    if isinstance(result, str) and result.startswith("__EVAL_THROW__:"):
+        return f"EVAL_THROW: {result[len('__EVAL_THROW__:'):][:400]}"
+
+    if result is None:
+        return "eval -> null"
+    if isinstance(result, bool):
+        return f"eval -> {str(result).lower()}"
+    if isinstance(result, (int, float)):
+        return f"eval -> {result}"
+    if isinstance(result, str):
+        s = result
+    else:
+        try:
+            s = json.dumps(result, ensure_ascii=False, default=str)
+        except Exception:
+            s = str(result)
+    if len(s) > EVAL_RESULT_MAX:
+        s = s[:EVAL_RESULT_MAX] + f"... [+{len(s) - EVAL_RESULT_MAX} chars truncated]"
+    return f"eval -> {s}"
 
 
 def _find_element(elements: list[dict], eid: str) -> dict | None:
@@ -266,6 +332,8 @@ def execute_action(page: Page, action: str, args: list[str],
             ms = int(args[0])
             page.wait_for_timeout(ms)
             return f"Waited {ms}ms"
+        if action == "evaluate":
+            return _execute_evaluate(page, args[0])
         if action == "screenshot":
             SCREENSHOT_DIR.mkdir(exist_ok=True)
             ts = datetime.now().strftime("%Y%m%d_%H%M%S")

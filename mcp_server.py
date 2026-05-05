@@ -156,9 +156,11 @@ def qa_run(
         metamask: Load bundled MetaMask extension (requires prior setup).
         extensions: Paths to additional unpacked extensions.
         init_script: Optional JavaScript source injected via Playwright
-            add_init_script before any navigation. Useful for pre-seeding
-            localStorage/sessionStorage with an auth session so the agent
-            can skip the login UI.
+            context.add_init_script. Runs in every new page of the
+            BrowserContext BEFORE any page-side script — including the
+            SPA bundle and inline <script> tags. Use to pre-seed
+            localStorage/sessionStorage/cookies with an auth session,
+            monkey-patch fetch, install console hooks, etc.
 
     Returns:
         dict with keys: status (PASS/FAIL/ERROR), description, steps, elapsed, log.

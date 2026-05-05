@@ -53,9 +53,14 @@ def main() -> None:
     parser.add_argument("--model", default=MODEL, help=f"Model (default: {MODEL})")
     parser.add_argument("--init-script",
                         help="Path to a JS file injected via Playwright "
-                             "add_init_script before any navigation. Useful "
-                             "for pre-seeding localStorage with an auth "
-                             "session to skip the login UI.")
+                             "context.add_init_script. Runs once in every "
+                             "new page in this BrowserContext, BEFORE any "
+                             "page-side script — including the SPA bundle "
+                             "and inline <script> tags — i.e. as the very "
+                             "first thing the page sees. Useful for "
+                             "pre-seeding localStorage / sessionStorage / "
+                             "cookies with an auth session, monkey-patching "
+                             "fetch, etc.")
     parser.add_argument("--json-result", action="store_true",
                         help="Emit a JSON result line to stdout; route logs to stderr "
                              "(used by the MCP wrapper)")
@@ -172,8 +177,14 @@ def main() -> None:
             "steps": steps_used,
             "elapsed": round(time.time() - t_start, 1),
             "screenshots": finish_summary.get("screenshots", []),
+            "screenshots_dir": finish_summary.get("screenshots_dir"),
             "console_errors": finish_summary.get("console_errors", 0),
             "network_errors": finish_summary.get("network_errors", 0),
             "flicker_events": finish_summary.get("flicker_events", 0),
+            "console_log_path": finish_summary.get("console_log_path"),
+            "network_log_path": finish_summary.get("network_log_path"),
+            "flicker_log_path": finish_summary.get("flicker_log_path"),
+            "done_reasks_log_path": finish_summary.get("done_reasks_log_path"),
+            "done_reasks_log": finish_summary.get("done_reasks_log", []),
         })
     sys.exit(0 if status == "PASS" else 1)

@@ -85,9 +85,12 @@ def _emit_step(ctx: AgentCtx) -> None:
                 ctx.android_device.screenshot(str(shot))
             elif kind == "browser" and ctx.page is not None:
                 shot = ctx.screenshots_dir / f"step_{ctx.step:03d}.jpg"
+                # full_page=True so post-mortem audits see content below
+                # the fold; viewport-only shots dropped fixed-positioned
+                # overlays inconsistently because of scroll position.
                 ctx.page.screenshot(
                     path=str(shot), type="jpeg", quality=60,
-                    full_page=False, timeout=2000,
+                    full_page=True, timeout=3500,
                 )
             else:
                 shot = None
@@ -339,15 +342,62 @@ def act_evidence_gate(ctx: AgentCtx) -> None:
     elif verdict == "reask":
         ctx.step_record["done_reasked"] = True
         ctx.step_record["evidence_present"] = False
+        ctx.done_reasks_log.append({
+            "step": ctx.step,
+            "description": description,
+            "reason": _evidence_failure_reason(description),
+            "verdict": "reask",
+        })
         ctx.send_event(AgentEvent.EVIDENCE_MISS)
     elif verdict == "forced_fail":
         ctx.step_record["done_reasked"] = True
         ctx.step_record["evidence_present"] = False
+        ctx.done_reasks_log.append({
+            "step": ctx.step,
+            "description": description,
+            "reason": _evidence_failure_reason(description),
+            "verdict": "forced_fail",
+        })
         ctx.send_event(AgentEvent.REASKS_EXHAUSTED)
     else:  # "pass_fail" — done FAIL always accepted
         ctx.status = "FAIL"
         ctx.description = description
         ctx.send_event(AgentEvent.EVIDENCE_OK)
+
+
+def _evidence_failure_reason(description: str) -> str:
+    """Best-effort label for WHY evidence_verdict rejected this PASS.
+
+    Inspected categories mirror runtime/evidence.py::has_evidence. The
+    label is for humans reading bench logs / MCP results — it doesn't
+    feed back into the agent loop.
+    """
+    if not description:
+        return "empty_description"
+    if len(description.strip()) < 5:
+        return "too_short"
+    # quick re-runs of the per-pattern checks for diagnostics only
+    from .evidence import (
+        EVIDENCE_NUM_NOUN, EVIDENCE_PROPER_NOUN, EVIDENCE_QUOTE,
+        EVIDENCE_TXHASH, EVIDENCE_UNIT, EVIDENCE_YEAR,
+        _content_words_count,
+    )
+    misses: list[str] = []
+    if not EVIDENCE_QUOTE.search(description):
+        misses.append("no_quoted_text")
+    if not EVIDENCE_TXHASH.search(description):
+        misses.append("no_tx_hash")
+    if not EVIDENCE_UNIT.search(description):
+        misses.append("no_number_unit")
+    if not EVIDENCE_PROPER_NOUN.search(description):
+        misses.append("no_proper_noun")
+    if not EVIDENCE_YEAR.search(description):
+        misses.append("no_year")
+    if len(EVIDENCE_NUM_NOUN.findall(description)) < 2:
+        misses.append("no_num_noun_pair")
+    if _content_words_count(description) < 4:
+        misses.append("narrative_too_thin")
+    return "all_checks_failed: " + ",".join(misses) if misses else "unknown"
 
 
 # -----------------------------------------------------------------------
@@ -536,6 +586,47 @@ def _run_vision(ctx: AgentCtx, reason: str) -> None:
     if ctx.verbose:
         print(f"    vision decided: {resp_text.strip()}")
 
+    # Cross-check: vision sometimes hallucinates element ids ("click 99
+    # to expand the alert" when 99 isn't on the page). The DSL snapshot
+    # is ground truth for what's actionable — reject any id-bearing
+    # vision action whose id isn't in the snapshot, and feed the LLM
+    # a list of valid ids so it can correct itself.
+    if action in ("click", "type", "select", "hover") and args:
+        try:
+            eid = int(args[0])
+        except (ValueError, TypeError):
+            eid = None
+        if eid is not None:
+            elements = (ctx.snapshot or {}).get("elements") or []
+            valid_ids = sorted({int(e["id"]) for e in elements
+                                if isinstance(e.get("id"), int)})
+            if eid not in valid_ids:
+                shown = ", ".join(str(x) for x in valid_ids[:30])
+                if len(valid_ids) > 30:
+                    shown += f", ... (+{len(valid_ids) - 30} more)"
+                ctx.step_record["vision_hallucinated"] = {
+                    "action": action, "id": eid, "valid_ids": valid_ids,
+                }
+                ctx.messages.append({
+                    "role": "user",
+                    "content": (
+                        f"REJECTED: vision returned `{action} {eid}` but id "
+                        f"{eid} is NOT in the current page snapshot. The "
+                        f"snapshot has these ids: [{shown}]. Either pick a "
+                        f"real id from the snapshot or `done FAIL` if the "
+                        f"target genuinely isn't on the page."
+                    ),
+                })
+                ctx.step_record["result"] = (
+                    f"vision rejected: hallucinated id {eid} "
+                    f"(valid: {len(valid_ids)} ids)"
+                )
+                if ctx.verbose:
+                    print(f"    vision rejected: id {eid} not in snapshot")
+                _emit_step(ctx)
+                ctx.send_event(AgentEvent.START)
+                return
+
     # Re-append to prev_actions so soft-loop detection sees the new action.
     if reason == "loop":
         ctx.prev_actions.append(f"{action}:{':'.join(args)}")
@@ -621,6 +712,31 @@ def act_exec(ctx: AgentCtx) -> None:
     elements = ctx.snapshot["elements"]
     is_fallback = ctx.snapshot["is_fallback"]
     _print_action_line(ctx, elements)
+
+    # Pre-action screenshot — captures the page state the agent is about
+    # to act upon. Combined with the post-action shot in _emit_step this
+    # gives a clean before/after pair per step. Errors swallowed; the
+    # post-action shot will still get written by _emit_step regardless.
+    if ctx.screenshots_dir is not None:
+        kind = getattr(ctx, "driver_kind", "browser")
+        try:
+            if kind == "android" and ctx.android_device is not None:
+                pre = ctx.screenshots_dir / f"step_{ctx.step:03d}_pre.png"
+                ctx.android_device.screenshot(str(pre))
+            elif kind == "browser" and ctx.page is not None:
+                pre = ctx.screenshots_dir / f"step_{ctx.step:03d}_pre.jpg"
+                ctx.page.screenshot(
+                    path=str(pre), type="jpeg", quality=60,
+                    full_page=True, timeout=3000,
+                )
+            else:
+                pre = None
+            if pre is not None:
+                pre_str = str(pre)
+                ctx.step_record["screenshot_pre"] = pre_str
+                ctx.screenshots.append(pre_str)
+        except Exception:
+            pass
 
     # Android driver path: uiautomator2 dispatch; no MM popup / tx-trigger
     # handling (browser-only concerns). Feed errors back to the LLM and
@@ -764,6 +880,13 @@ def act_exec(ctx: AgentCtx) -> None:
 
     # Feed errors back to the LLM.
     if result.startswith(("TIMEOUT:", "ERROR:")):
+        ctx.messages.append({"role": "user", "content": result})
+    # `evaluate` results MUST reach the LLM — that's the whole point of
+    # the action. Without this the agent would fly blind on the next
+    # turn, having asked a question and never seeing the answer.
+    elif ctx.action == "evaluate" and result.startswith(
+        ("eval -> ", "EVAL_ERROR:", "EVAL_THROW:")
+    ):
         ctx.messages.append({"role": "user", "content": result})
 
     _emit_step(ctx)

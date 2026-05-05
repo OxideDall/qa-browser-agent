@@ -7,6 +7,7 @@ record and tear down. The per-step dispatch logic lives in
 qa_agent/runtime/{fsm,fsm_actions,transitions,states}.py.
 """
 
+import json
 import os
 import re
 import time
@@ -18,6 +19,41 @@ from playwright.sync_api import Page, sync_playwright
 
 from .browser import _launch_browser
 from .config import NAV_TIMEOUT, SCREENSHOT_DIR, STEP_TIMEOUT
+
+
+def _dump_artefacts(ctx) -> dict:
+    """Serialise the per-run console / network / flicker / done-reask
+    streams into JSONL files next to the screenshots so post-mortem
+    review doesn't need a re-run. Returns a {name: path} dict that gets
+    folded into the on_finish summary; missing dir or write errors are
+    swallowed (instrumentation must never break a run).
+
+    The DIAG block surfaced to the LLM is intentionally compact — these
+    full dumps are the "click for full" view the operator wanted.
+    """
+    out: dict = {}
+    if ctx.screenshots_dir is None:
+        return out
+
+    streams = (
+        ("console", ctx.console_log),
+        ("network", ctx.network_errors),
+        ("flicker", ctx.flicker_log),
+        ("done_reasks", ctx.done_reasks_log),
+    )
+    for name, records in streams:
+        if not records:
+            continue
+        path = ctx.screenshots_dir / f"{name}.jsonl"
+        try:
+            with path.open("w", encoding="utf-8") as f:
+                for rec in records:
+                    f.write(json.dumps(rec, ensure_ascii=False, default=str)
+                            + "\n")
+            out[f"{name}_log_path"] = str(path)
+        except Exception:
+            pass
+    return out
 
 
 _CONSOLE_ERROR_LEVELS = frozenset({"error", "pageerror"})
@@ -145,6 +181,14 @@ wait <ms>
 look              — annotated screenshot
 screenshot        — save to disk
 tab <n>           — switch tab (0-indexed)
+evaluate <jsExpr> — run JS in page; result returned as text. PREFER this over
+                    `look` for assertions on hidden state, counters, dialog
+                    contents, attributes — DOM truth beats vision guessing.
+                    Examples:
+                      evaluate document.querySelector('[role=dialog]').textContent
+                      evaluate document.querySelectorAll('.alert-row').length
+                      evaluate window.__APP_STATE__?.userId ?? null
+                    For multi-statement use: evaluate (()=>{ /* ... */; return x; })()
 done PASS|FAIL "why"
 
 ## Rules
@@ -347,11 +391,13 @@ def run_task(task: str, url: str | None, headless: bool, verbose: bool,
 
         elapsed = time.time() - ctx.t_start
 
-        # Emit final summary BEFORE before_close so the assert hook can read
-        # the recorded result. before_close still has live page+context.
+        # Dump artefact JSONL files next to screenshots, then emit final
+        # summary BEFORE before_close so the assert hook can read the
+        # recorded result. before_close still has live page+context.
+        artefact_paths = _dump_artefacts(ctx)
         if on_finish:
             try:
-                on_finish({
+                summary = {
                     "t": "result",
                     "status": ctx.status,
                     "description": ctx.description,
@@ -361,10 +407,17 @@ def run_task(task: str, url: str | None, headless: bool, verbose: bool,
                     "total_out": ctx.total_out,
                     "max_steps": max_steps,
                     "screenshots": list(ctx.screenshots),
+                    "screenshots_dir": (
+                        str(ctx.screenshots_dir)
+                        if ctx.screenshots_dir is not None else None
+                    ),
                     "console_errors": _count_console_errors(ctx.console_log),
                     "network_errors": len(ctx.network_errors),
                     "flicker_events": len(ctx.flicker_log),
-                })
+                    "done_reasks_log": list(ctx.done_reasks_log),
+                }
+                summary.update(artefact_paths)
+                on_finish(summary)
             except Exception:
                 pass
 
@@ -498,9 +551,10 @@ def run_android_task(task: str, package: str | None, *,
 
     elapsed = time.time() - ctx.t_start
 
+    artefact_paths = _dump_artefacts(ctx)
     if on_finish:
         try:
-            on_finish({
+            summary = {
                 "t": "result",
                 "status": ctx.status,
                 "description": ctx.description,
@@ -510,10 +564,17 @@ def run_android_task(task: str, package: str | None, *,
                 "total_out": ctx.total_out,
                 "max_steps": max_steps,
                 "screenshots": list(ctx.screenshots),
+                "screenshots_dir": (
+                    str(ctx.screenshots_dir)
+                    if ctx.screenshots_dir is not None else None
+                ),
                 "console_errors": 0,         # android: no console capture
                 "network_errors": 0,         # android: no http capture
                 "flicker_events": 0,
-            })
+                "done_reasks_log": list(ctx.done_reasks_log),
+            }
+            summary.update(artefact_paths)
+            on_finish(summary)
         except Exception:
             pass
 

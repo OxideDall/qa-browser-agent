@@ -128,16 +128,34 @@ Keep the taxonomy honest: if you add evidence patterns, add regression fixtures 
 - Web3 fixtures use the dedicated `BENCH_PROFILE` (`~/.config/qa_agent/bench_profile`) that has MM pre-seeded with `BENCH_SEED`; non-web3 fixtures run profile-less.
 - Run log schema is documented in `bench/README.md` — `{t: start|step|result|assert|skip|error|attempt|note}` JSONL lines, one file per run under `bench/results/runs/`.
 
+### `evaluate <jsExpr>` DSL action — DOM truth beats vision guessing
+
+The browser DSL has `evaluate <jsExpr>` (`qa_agent/actions.py::_execute_evaluate`). The LLM should reach for it whenever an assertion can be settled by reading the DOM directly — counters, dialog text, hidden state, computed style, `window.__APP_STATE__` — instead of asking vision to interpret a screenshot. Result is JSON-stringified, capped at `EVAL_RESULT_MAX=1500` chars, prefixed `eval -> ...`, and **always** fed back into the conversation (`runtime/fsm_actions.py::act_exec`) so the next LLM turn sees the answer. Wrap multi-statement code as `(()=>{ /*…*/; return x; })()` since bare `throw` / `return` aren't expressions.
+
+This is the single biggest lever against the "vision hallucinates under pressure" failure mode — operators reported Haiku confidently describing UI states that didn't match the screenshot. Anything that can be checked against the DOM should be.
+
 ### Diagnostics: console, network, screenshots, flicker
 
 Every browser run automatically captures four streams that the original loop dropped on the floor. None of these are opt-in — they are wired in `qa_agent/agent.py::_attach_diagnostics` and `qa_agent/runtime/fsm_actions.py::_emit_step`.
 
-- **Per-step screenshot**. Browser: JPEG (`q60`, viewport-only) at `qa_screenshots/run_<UTC>_<pid>/step_NNN.jpg`. Android: PNG via `device.screenshot(path)`. Path goes to `step_record["screenshot"]` and to `ctx.screenshots`. Final summary key: `screenshots: list[str]`.
+- **Per-step screenshots — before AND after**. Browser: JPEG (`q60`, `full_page=True`) at `qa_screenshots/run_<UTC>_<pid>/step_NNN.jpg` (post-action) and `step_NNN_pre.jpg` (pre-action, only emitted for `act_exec` steps — `done` paths don't generate one because no DOM action runs). Android: PNG via `device.screenshot(path)`. Paths land on `step_record["screenshot"]` and `step_record["screenshot_pre"]`. Final summary keys: `screenshots: list[str]`, `screenshots_dir: str`. `full_page=True` was deliberate — viewport-only shots inconsistently captured fixed-positioned overlays because of scroll position; the vision capture path additionally calls `window.scrollTo(0, 0)` before each shot for the same reason.
 - **Console + uncaught exceptions**. `page.on("console")` + `page.on("pageerror")` cover every page in the context — including new tabs spawned later (MM popups, target=_blank). Records land on `ctx.console_log`; per-step slice is in `step_record["console"]`. Final counter (errors only, not warns): `console_errors`.
 - **Failed HTTP responses + request failures**. `context.on("response")` filters status≥400, `context.on("requestfailed")` catches DNS / TLS / aborted. Per-step slice: `step_record["network"]`. Final counter: `network_errors`.
 - **Flicker (sub-second DOM oscillation)**. `qa_agent/browser.py::MUTATION_INIT_SCRIPT` injects a MutationObserver before any page script runs; it writes to a bounded `window.__qa_mutations` ring buffer. After every action `qa_agent/runtime/actions.py::detect_flicker` drains the buffer and emits one event per node-fingerprint that flapped ≥`FLICKER_MIN_FLAPS=4` times within `FLICKER_WINDOW_MS=500`. Per-step slice: `step_record["flicker"]`. Final counter: `flicker_events`.
 
 When console/network produced anything error-level during a step, `_emit_step` builds a compact `[DIAG since last action]` blurb and stashes it on `ctx.pending_diag`. The very next `act_think` prepends it to the user message so the LLM sees diagnostic context **before** committing to an action. The two SYSTEM_PROMPTs (browser / android) tell the agent how to interpret these blocks — don't drop those instructions when editing the prompt.
+
+**Full per-run dumps** of every stream are written next to screenshots when records exist:
+- `qa_screenshots/run_<UTC>_<pid>/console.jsonl` — every console event captured (no level filter; the inline DIAG only filters for compactness)
+- `.../network.jsonl` — every status≥400 response and every `requestfailed` event
+- `.../flicker.jsonl` — every flicker event
+- `.../done_reasks.jsonl` — every `done PASS` rejected by the evidence gate, with `step`, `description`, `reason` (a `_evidence_failure_reason` label like `all_checks_failed: no_quoted_text,no_tx_hash,...`), and `verdict` (`reask` / `forced_fail`)
+
+Paths surface in the final summary as `console_log_path`, `network_log_path`, `flicker_log_path`, `done_reasks_log_path`. The full `done_reasks_log` is also inlined in the summary so MCP callers don't need to read the file.
+
+### Vision hallucination guard (`runtime/fsm_actions.py::_run_vision`)
+
+Haiku in vision mode sometimes returns `click N` / `type N "..."` with `N` that isn't actually present in the DSL snapshot. The cross-check rejects these: it compares the parsed action's id against the live snapshot ids, appends a `REJECTED ... id N is NOT in the current page snapshot. The snapshot has ids: [...]` user message, sets `step_record["vision_hallucinated"] = {action, id, valid_ids}`, and re-enters `SNAPSHOTTING` so the agent picks again. This catches the most expensive failure mode: vision confidently fabricating an action the page can't satisfy.
 
 The MCP `qa_run` return dict and the CLI `--json-result` line surface all four counters plus the screenshot list:
 

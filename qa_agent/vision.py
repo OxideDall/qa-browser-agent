@@ -33,7 +33,16 @@ def capture_annotated_screenshot(page: Page, max_height: int = 480,
 
     skip_bboxes=True when JS eval is blocked (extension pages) — plain screenshot only.
     Returns base64-encoded JPEG.
+
+    Scrolls to top before capture so fixed-positioned overlays land at
+    consistent coordinates run-to-run; viewport-only shots taken at an
+    arbitrary scroll position were the root cause of "vision sometimes
+    sees the badge, sometimes doesn't" inconsistency.
     """
+    try:
+        page.evaluate("() => window.scrollTo(0, 0)")
+    except Exception:
+        pass
     png_bytes = page.screenshot(type="png")
     img = Image.open(BytesIO(png_bytes))
 
