@@ -531,6 +531,276 @@ def run_task(task: str, url: str | None, headless: bool, verbose: bool,
     return ctx.status, ctx.description, ctx.step
 
 
+def run_tagged_task(steps_text: str,
+                    url: str | None = None,
+                    *,
+                    headless: bool = True,
+                    verbose: bool = False,
+                    extensions: list[str] | None = None,
+                    init_script: str | None = None,
+                    profile_dir=None,
+                    http_credentials: dict | None = None,
+                    trace: bool = False,
+                    continue_on_fail: bool = False,
+                    on_step: Callable[[dict], None] | None = None,
+                    on_finish: Callable[[dict], None] | None = None,
+                    before_close: Callable[[Page, "object"], None] | None = None,
+                    ) -> tuple[str, str, int]:
+    """LLM-less counterpart of run_task. Parse `steps_text` (tagged DSL),
+    execute deterministically against Playwright, return summary.
+
+    Same diagnostics surface as run_task (per-step screenshots, console /
+    network / flicker streams, JSONL artefacts, optional Playwright
+    trace.zip) — only the agent loop is replaced.
+
+    `continue_on_fail=False` (default) stops at the first FAIL/ERROR
+    step. `True` runs every step regardless and reports the worst
+    overall status. Either way, individual step results land in
+    `step_record` via on_step.
+
+    Returns (status, description, steps_executed).
+    """
+    from .runtime.ctx import AgentCtx
+    from .tagged import (
+        TaggedParseError, execute_step, parse_tagged,
+    )
+
+    t_start = time.time()
+
+    # Parse up-front. Bad grammar -> structured ERROR before launching
+    # a browser; cheaper than crashing mid-run.
+    try:
+        steps = parse_tagged(steps_text)
+    except TaggedParseError as e:
+        if on_finish:
+            try:
+                on_finish({
+                    "t": "result", "status": "ERROR",
+                    "description": f"parse error: {e}",
+                    "steps_used": 0, "wall_seconds": 0.0,
+                    "total_in": 0, "total_out": 0,
+                    "max_steps": 0, "screenshots": [],
+                    "screenshots_dir": None,
+                    "console_errors": 0, "network_errors": 0,
+                    "flicker_events": 0, "done_reasks_log": [],
+                    "signals": {}, "confidence": 0.0,
+                    "uncertainty_reasons": [f"parse error: {e}"],
+                })
+            except Exception:
+                pass
+        return "ERROR", f"parse error: {e}", 0
+
+    if not steps:
+        return "ERROR", "no steps parsed (empty input?)", 0
+
+    ctx = AgentCtx(
+        task="tagged: " + steps_text[:80].replace("\n", " | "),
+        url=url, headless=headless, verbose=verbose,
+        max_steps=len(steps),
+        extensions=extensions, init_script=init_script,
+        profile_dir=profile_dir,
+        on_step=on_step, on_finish=on_finish, before_close=before_close,
+        t_start=t_start,
+    )
+
+    overall_status = "PASS"
+    description = f"all {len(steps)} steps passed"
+    step_results: list[dict] = []
+    executed = 0
+
+    with sync_playwright() as p:
+        ctx.context, ctx.page, _ = _launch_browser(
+            p, headless, extensions, init_script=init_script,
+            profile_dir=profile_dir,
+            http_credentials=http_credentials,
+        )
+
+        ctx.screenshots_dir = (
+            SCREENSHOT_DIR
+            / f"run_tagged_{datetime.utcnow().strftime('%Y%m%dT%H%M%S')}_{os.getpid()}"
+        )
+        try:
+            ctx.screenshots_dir.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            ctx.screenshots_dir = None
+
+        _attach_diagnostics(ctx)
+
+        ctx.trace_active = False
+        if trace:
+            try:
+                ctx.context.tracing.start(
+                    snapshots=True, screenshots=True, sources=False,
+                )
+                ctx.trace_active = True
+            except Exception as e:
+                if verbose:
+                    print(f"  [tracing.start failed: {e}]")
+
+        # Initial navigation if url provided.
+        if url:
+            try:
+                ctx.page.goto(url, timeout=NAV_TIMEOUT,
+                              wait_until="domcontentloaded")
+            except Exception as e:
+                overall_status = "ERROR"
+                description = f"initial navigation failed: {e}"
+                steps = []  # skip step loop
+
+        for i, step in enumerate(steps, start=1):
+            ctx.step = i
+            ctx.label = f"[{i}/{len(steps)}]"
+
+            # pre-action shot, mirrored from act_exec.
+            pre_path: str | None = None
+            if ctx.screenshots_dir is not None:
+                try:
+                    pre = ctx.screenshots_dir / f"step_{i:03d}_pre.jpg"
+                    ctx.page.screenshot(
+                        path=str(pre), type="jpeg", quality=60,
+                        full_page=True, timeout=3000,
+                    )
+                    pre_path = str(pre)
+                    ctx.screenshots.append(pre_path)
+                except Exception:
+                    pass
+
+            if verbose:
+                print(f"  {ctx.label} {step}")
+
+            res = execute_step(ctx.page, step)
+            executed = i
+
+            # post-action shot.
+            post_path: str | None = None
+            if ctx.screenshots_dir is not None:
+                try:
+                    post = ctx.screenshots_dir / f"step_{i:03d}.jpg"
+                    ctx.page.screenshot(
+                        path=str(post), type="jpeg", quality=60,
+                        full_page=True, timeout=3000,
+                    )
+                    post_path = str(post)
+                    ctx.screenshots.append(post_path)
+                except Exception:
+                    pass
+
+            # Per-step diagnostic slice (mirrors fsm_actions._emit_step).
+            console_slice = ctx.console_log[ctx.console_cursor:]
+            ctx.console_cursor = len(ctx.console_log)
+            network_slice = ctx.network_errors[ctx.network_cursor:]
+            ctx.network_cursor = len(ctx.network_errors)
+
+            record = {
+                "t": "step", "step": i, "verb": step.verb,
+                "args": list(step.args),
+                "line_no": step.line_no, "raw": step.raw,
+                "status": res.status, "message": res.message,
+                "latency_ms": res.latency_ms,
+                "eval_result": res.eval_result,
+                "screenshot": post_path,
+                "screenshot_pre": pre_path,
+                "page_url": ctx.page.url if not ctx.page.is_closed() else None,
+                "console": console_slice,
+                "network": network_slice,
+            }
+            step_results.append(record)
+            if on_step:
+                try:
+                    on_step(record)
+                except Exception:
+                    pass
+
+            if verbose:
+                print(f"    -> {res.status}: {res.message[:120]}")
+
+            if res.status != "PASS":
+                if overall_status == "PASS":
+                    overall_status = res.status
+                    description = (
+                        f"step {i} ({step.verb}) {res.status}: {res.message}"
+                    )
+                if not continue_on_fail:
+                    break
+
+        elapsed = time.time() - t_start
+
+        trace_path: str | None = None
+        if ctx.trace_active and ctx.screenshots_dir is not None:
+            try:
+                tp = ctx.screenshots_dir / "trace.zip"
+                ctx.context.tracing.stop(path=str(tp))
+                trace_path = str(tp)
+            except Exception as e:
+                if verbose:
+                    print(f"  [tracing.stop failed: {e}]")
+
+        artefact_paths = _dump_artefacts(ctx)
+        if trace_path:
+            artefact_paths["trace_path"] = trace_path
+
+        # Confidence in tagged mode: 1.0 on clean pass, 0.0 on any FAIL,
+        # halfway-house between the two with errors-but-passed never
+        # happens (continue_on_fail still records overall as worst).
+        if overall_status == "PASS":
+            conf = 1.0
+            conf_reasons: list[str] = []
+        else:
+            conf = 0.0
+            conf_reasons = [f"{overall_status} on step {executed}"]
+
+        ctx.status = overall_status
+        ctx.description = description
+
+        if on_finish:
+            try:
+                on_finish({
+                    "t": "result",
+                    "status": overall_status,
+                    "description": description,
+                    "steps_used": executed,
+                    "wall_seconds": elapsed,
+                    "total_in": 0,
+                    "total_out": 0,
+                    "max_steps": len(steps),
+                    "screenshots": list(ctx.screenshots),
+                    "screenshots_dir": (
+                        str(ctx.screenshots_dir)
+                        if ctx.screenshots_dir is not None else None
+                    ),
+                    "console_errors": _count_console_errors(ctx.console_log),
+                    "network_errors": len(ctx.network_errors),
+                    "flicker_events": len(ctx.flicker_log),
+                    "done_reasks_log": [],
+                    "signals": {},
+                    "confidence": conf,
+                    "uncertainty_reasons": conf_reasons,
+                    "tagged": True,
+                    "step_results": step_results,
+                    **artefact_paths,
+                })
+            except Exception:
+                pass
+
+        if before_close:
+            try:
+                before_close(ctx.page, ctx.context)
+            except Exception as e:
+                if verbose:
+                    print(f"  [before_close hook failed: {e}]")
+
+        ctx.context.close()
+
+    print(f"\n{'='*50}")
+    print(f"  Result: {overall_status}")
+    print(f"  {description}")
+    print(f"  Steps: {executed}/{len(steps)} | Time: {elapsed:.1f}s")
+    print(f"  Mode: tagged (no LLM)")
+    print(f"{'='*50}")
+
+    return overall_status, description, executed
+
+
 def run_android_task(task: str, package: str | None, *,
                      serial: str | None = None,
                      verbose: bool = False,

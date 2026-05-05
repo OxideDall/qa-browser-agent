@@ -16,6 +16,7 @@ python -m qa_agent "verify signup at http://localhost:3000"
 python -m qa_agent --metamask "connect wallet on https://app.uniswap.org"
 python -m qa_agent --setup-metamask          # one-shot MM wallet bootstrap
 python -m qa_agent --json-result ...         # MCP mode: JSON → stdout, logs → stderr
+python -m qa_agent --tagged steps.txt        # LLM-less deterministic mode
 ```
 
 Bench (browser):
@@ -128,6 +129,47 @@ Keep the taxonomy honest: if you add evidence patterns, add regression fixtures 
 - `bench/runner/runner.py::run_one` orchestrates: load → pre-flight web3 balance check (`skip_if_underfunded`) → serve static site → `run_task(...)` with `on_step` / `on_finish` / `before_close` hooks → programmatic OR declarative assert → JSONL record. Retry loop honors `[budget].retries` from `config.toml`.
 - Web3 fixtures use the dedicated `BENCH_PROFILE` (`~/.config/qa_agent/bench_profile`) that has MM pre-seeded with `BENCH_SEED`; non-web3 fixtures run profile-less.
 - Run log schema is documented in `bench/README.md` — `{t: start|step|result|assert|skip|error|attempt|note}` JSONL lines, one file per run under `bench/results/runs/`.
+
+### Two execution modes — natural-language (LLM) vs tagged (deterministic)
+
+This codebase has **two** independent execution paths:
+
+1. **`run_task` (LLM-driven)** — `qa_agent/agent.py`. Natural-language task, vision + DSL snapshot loop, evidence gate, loop detection, vision hallucination guard. Use for exploratory and "log in and find X" workflows. The whole FSM in `qa_agent/runtime/` belongs to this path.
+2. **`run_tagged_task` (deterministic, NO LLM)** — `qa_agent/agent.py`, `qa_agent/tagged.py`. Takes an explicit list of typed steps (`click`, `expect_visible`, `expect_text`, `expect_count`, `expect_eval`, ...) and runs them straight through Playwright. No vision, no LLM cost, no evidence gate, deterministic timing. Stops at first FAIL by default.
+
+Both modes share the **diagnostics surface**: per-step pre+post screenshots, console / network / flicker capture, JSONL artefact dumps, optional Playwright trace.zip, the same final-summary schema (with `tagged: True` flag in the tagged path). Operators can slot tagged-mode runs into the same MCP / CLI / bench pipelines they already use for LLM runs.
+
+CLI: `python -m qa_agent --tagged path/to/steps.txt [--continue-on-fail]`. MCP: `qa_tagged(steps, ...)`. Bench: drop a `task.tagged.txt` next to `task.txt` (or set `[run].tagged` in `config.toml`) and the runner picks tagged mode automatically.
+
+Tagged grammar (one step per line; `#` starts a comment, blank lines skipped, `- ` bullet prefix tolerated):
+
+```
+click <selector>
+type <selector> "text"
+goto <url>
+wait <ms>
+wait_for <selector> [timeout_ms]
+press <key>
+scroll up|down
+evaluate <jsExpr>
+screenshot
+
+expect_visible <selector> [timeout_ms]
+expect_hidden <selector> [timeout_ms]
+expect_text "<substring>"
+expect_url <regex>
+expect_count <selector> <op> <n>          # op ∈ {==, !=, >, >=, <, <=}
+expect_eval <jsExpr> <op> "<expected>"    # + equals / contains / matches
+```
+
+Selectors:
+- `button "OK"`, `dialog`, `link "Sign in"`, `heading "Title"` — Playwright `get_by_role(role, name=name)`.
+- `"Click me"` (bare quoted) or `text:"..."` — `get_by_text`.
+- Anything else — handed to `page.locator(...)`. CSS, `[attr=value]`, `data-testid=foo`, xpath= etc. all work.
+
+Use `evaluate` for "compute the answer" and `expect_eval` for "compute and assert" — these are the cheapest assertion shapes (~10ms each, no DOM dance) and the right tool for hidden state, counters, dialog text, anything that's faster to check via JS than via UI traversal. Heavy `expect_visible` / `expect_text` is best for "did the right thing render" gates.
+
+Runtime: `qa_agent/tagged.py::parse_tagged` → `list[Step]`, `execute_step(page, step) -> StepResult`. Selector resolver is `resolve_selector(page, sel)`; `_resolve_selector_args` handles the `<role> "name"` two-token form for action verbs. Timeouts default to `DEFAULT_STEP_TIMEOUT=5000` ms; override per-step with the optional trailing integer arg (e.g. `expect_visible dialog 15000`).
 
 ### `evaluate <jsExpr>` DSL action — DOM truth beats vision guessing
 

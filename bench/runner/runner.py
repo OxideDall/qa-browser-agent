@@ -22,7 +22,7 @@ _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-from qa_agent.agent import run_task  # noqa: E402
+from qa_agent.agent import run_tagged_task, run_task  # noqa: E402
 from qa_agent.config import METAMASK_EXT  # noqa: E402
 
 from . import asserts as decl_assert  # noqa: E402
@@ -157,19 +157,36 @@ def run_one(fixture_id: str, *, headless: bool | None = None,
 
                 t0 = time.time()
                 try:
-                    status, description, _steps = run_task(
-                        task=fixture.task,
-                        url=url,
-                        headless=fixture.headless if headless is None else headless,
-                        verbose=verbose,
-                        max_steps=fixture.budget.max_steps,
-                        extensions=ext_paths or None,
-                        init_script=fixture.init_script_src,
-                        on_step=rec.on_step,
-                        on_finish=rec.on_finish,
-                        before_close=_before_close,
-                        profile_dir=profile,
-                    )
+                    if fixture.tagged_steps is not None:
+                        # Tagged-DSL fixture: deterministic, no LLM. Pass
+                        # the same recorder hooks so step records and
+                        # final summary still flow into the JSONL log.
+                        status, description, _steps = run_tagged_task(
+                            fixture.tagged_steps,
+                            url=url,
+                            headless=fixture.headless if headless is None else headless,
+                            verbose=verbose,
+                            extensions=ext_paths or None,
+                            init_script=fixture.init_script_src,
+                            on_step=rec.on_step,
+                            on_finish=rec.on_finish,
+                            before_close=_before_close,
+                            profile_dir=profile,
+                        )
+                    else:
+                        status, description, _steps = run_task(
+                            task=fixture.task,
+                            url=url,
+                            headless=fixture.headless if headless is None else headless,
+                            verbose=verbose,
+                            max_steps=fixture.budget.max_steps,
+                            extensions=ext_paths or None,
+                            init_script=fixture.init_script_src,
+                            on_step=rec.on_step,
+                            on_finish=rec.on_finish,
+                            before_close=_before_close,
+                            profile_dir=profile,
+                        )
                 except Exception as e:
                     error = f"{type(e).__name__}: {e}"
                     rec.write({"t": "error", "stage": "run_task",

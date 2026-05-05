@@ -74,6 +74,31 @@ Each run produces `results/runs/<fixture_id>__<iso_ts>.jsonl`:
    "flicker_log_path": "...", "done_reasks_log_path": "..."}`
 - `{"t": "assert", "ok": bool, "msg": ..., "details": {...}}`
 
+## Tagged-DSL fixtures
+
+A fixture can opt out of the LLM loop entirely. Drop a `task.tagged.txt`
+in the fixture dir (or set `[run].tagged = "path/to/steps.txt"` in
+`config.toml`), and the runner dispatches via `qa_agent.run_tagged_task`
+instead of `run_task`. Same per-step recorder, same screenshots /
+console / network capture, same final summary schema (with
+`"tagged": true` flag) — only the agent loop is replaced.
+
+Use this for fixtures whose assertions are fully known up front:
+
+```text
+# bench/fixtures/<cat>/<id>/task.tagged.txt
+goto {base}/page
+wait_for heading 5000
+expect_visible heading "Welcome"
+expect_text "Logged in as alice"
+evaluate document.querySelector('[data-testid=balance]').textContent
+expect_eval document.querySelectorAll('.alert-row').length == 0
+```
+
+`task.txt` is still required for human-readable summaries unless the
+fixture is fully tagged-only — in that case the loader synthesises
+`task = "tagged: <first 80 chars of steps>"`.
+
 ## Adding a new fixture
 
 1. `mkdir -p bench/fixtures/<category>/<fixture_id>/site` (omit `site/` if

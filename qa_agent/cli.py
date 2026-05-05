@@ -10,7 +10,7 @@ import sys
 import time
 
 from . import config
-from .agent import run_task
+from .agent import run_tagged_task, run_task
 from .config import DEFAULT_MAX_STEPS, METAMASK_EXT, MODEL
 from .metamask import setup_metamask
 
@@ -81,6 +81,14 @@ def main() -> None:
                              "inspect the live browser. Implies --headless "
                              "off. Blocks on stdin until Enter; safe for "
                              "interactive sessions, NOT for CI.")
+    parser.add_argument("--tagged",
+                        help="Path to a tagged-DSL steps file. Runs the "
+                             "deterministic, LLM-less assertion loop "
+                             "(qa_agent.tagged). Mutually exclusive with "
+                             "the natural-language `task` positional.")
+    parser.add_argument("--continue-on-fail", action="store_true",
+                        help="Tagged mode only: keep running after a step "
+                             "fails (default: stop on first FAIL).")
 
     args = parser.parse_args()
 
@@ -115,7 +123,7 @@ def main() -> None:
             })
         sys.exit(0 if status == "PASS" else 1)
 
-    if not args.task:
+    if not args.task and not args.tagged:
         parser.print_help()
         sys.exit(1)
 
@@ -171,6 +179,80 @@ def main() -> None:
                 })
             sys.exit(1)
 
+    # Shared --show-browser hook used by both LLM and tagged paths.
+    def _show_browser_pause(_page, _ctx) -> None:
+        print(
+            "[--show-browser] press Enter in this terminal to "
+            "close the browser and exit...", file=sys.stderr,
+        )
+        try:
+            input()
+        except (KeyboardInterrupt, EOFError):
+            pass
+
+    headless_eff = False if args.show_browser else args.headless
+
+    # Tagged mode: read steps file, dispatch to run_tagged_task. We
+    # branch here so the rest of the CLI (LLM provider banner, model
+    # override, etc.) is bypassed — tagged mode doesn't use any of it.
+    if args.tagged:
+        try:
+            with open(args.tagged, "r", encoding="utf-8") as f:
+                steps_text = f.read()
+        except OSError as e:
+            msg = f"Cannot read --tagged {args.tagged}: {e}"
+            print(msg, file=sys.stderr)
+            if args.json_result:
+                _emit_json(original_stdout, {
+                    "status": "ERROR", "description": msg,
+                    "steps": 0, "elapsed": 0.0,
+                })
+            sys.exit(1)
+        tagged_summary: dict = {}
+        t_tagged_start = time.time()
+        print(f"QA Agent: tagged mode ({args.tagged})")
+        try:
+            status, description, steps_used = run_tagged_task(
+                steps_text, url=args.url,
+                headless=headless_eff,
+                verbose=args.verbose,
+                init_script=init_script_src,
+                http_credentials=http_creds,
+                trace=args.trace,
+                continue_on_fail=args.continue_on_fail,
+                on_finish=lambda rec: tagged_summary.update(rec),
+                before_close=(_show_browser_pause if args.show_browser else None),
+            )
+        except Exception as e:
+            if args.json_result:
+                _emit_json(original_stdout, {
+                    "status": "ERROR",
+                    "description": f"{type(e).__name__}: {e}",
+                    "steps": 0,
+                    "elapsed": round(time.time() - t_tagged_start, 1),
+                })
+            raise
+        if args.json_result:
+            _emit_json(original_stdout, {
+                "status": status,
+                "description": description,
+                "steps": steps_used,
+                "elapsed": round(time.time() - t_tagged_start, 1),
+                "tagged": True,
+                "confidence": tagged_summary.get("confidence"),
+                "screenshots": tagged_summary.get("screenshots", []),
+                "screenshots_dir": tagged_summary.get("screenshots_dir"),
+                "console_errors": tagged_summary.get("console_errors", 0),
+                "network_errors": tagged_summary.get("network_errors", 0),
+                "flicker_events": tagged_summary.get("flicker_events", 0),
+                "console_log_path": tagged_summary.get("console_log_path"),
+                "network_log_path": tagged_summary.get("network_log_path"),
+                "flicker_log_path": tagged_summary.get("flicker_log_path"),
+                "trace_path": tagged_summary.get("trace_path"),
+                "step_results": tagged_summary.get("step_results", []),
+            })
+        sys.exit(0 if status == "PASS" else 1)
+
     print(f"QA Agent: {args.task}")
     ext_info = f" | Extensions: {len(extensions)}" if extensions else ""
     init_info = " | init-script: yes" if init_script_src else ""
@@ -188,20 +270,6 @@ def main() -> None:
         finish_summary.update(rec)
 
     try:
-        # --show-browser overrides --headless and pauses before close so
-        # the operator can inspect the live state. Wired via before_close.
-        headless_eff = False if args.show_browser else args.headless
-
-        def _show_browser_pause(_page, _ctx) -> None:
-            print(
-                "[--show-browser] press Enter in this terminal to "
-                "close the browser and exit...", file=sys.stderr,
-            )
-            try:
-                input()
-            except (KeyboardInterrupt, EOFError):
-                pass
-
         status, description, steps_used = run_task(
             args.task, args.url, headless_eff, args.verbose,
             args.max_steps, extensions or None,

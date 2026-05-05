@@ -48,6 +48,12 @@ class Fixture:
     declarative_assert: dict[str, Any] | None
     programmatic_assert: Callable[[dict], tuple[bool, str]] | None
     fixture_dir: Path
+    # If set, runner uses qa_agent.run_tagged_task instead of the
+    # natural-language run_task. Sourced from `task.tagged.txt` (if
+    # present) or [run].tagged in config.toml. Mutually exclusive
+    # with the natural-language `task` for the run path — the LLM-only
+    # `task` field still gets populated for logging / discoverability.
+    tagged_steps: str | None = None
 
 
 def _load_assert_py(path: Path) -> Callable[[dict], tuple[bool, str]]:
@@ -90,10 +96,31 @@ def load_fixture(fixture_id: str) -> Fixture:
     bcfg = cfg.get("budget", {})
     ncfg = cfg.get("network", None)
 
+    # Tagged-DSL fixture detection. Either `task.tagged.txt` lives next
+    # to (or instead of) task.txt, or [run].tagged points at a path
+    # relative to the fixture dir. task.txt is still required for
+    # logging / human-readable summaries.
+    tagged_steps: str | None = None
+    tagged_default = fixture_dir / "task.tagged.txt"
+    tagged_cfg = rcfg.get("tagged")
+    if tagged_cfg:
+        tagged_path = fixture_dir / tagged_cfg
+        if not tagged_path.exists():
+            raise FileNotFoundError(
+                f"[run].tagged points at {tagged_path}, not found"
+            )
+        tagged_steps = tagged_path.read_text()
+    elif tagged_default.exists():
+        tagged_steps = tagged_default.read_text()
+
     task_path = fixture_dir / "task.txt"
-    if not task_path.exists():
-        raise FileNotFoundError(f"missing task.txt in {fixture_dir}")
-    task = task_path.read_text().strip()
+    if not task_path.exists() and tagged_steps is None:
+        raise FileNotFoundError(
+            f"{fixture_dir}: needs task.txt or task.tagged.txt"
+        )
+    task = task_path.read_text().strip() if task_path.exists() else (
+        f"tagged: {tagged_steps[:80].strip()}"
+    )
 
     init_src: str | None = None
     init_name = rcfg.get("init_script")
@@ -147,6 +174,7 @@ def load_fixture(fixture_id: str) -> Fixture:
         declarative_assert=declarative,
         programmatic_assert=programmatic,
         fixture_dir=fixture_dir,
+        tagged_steps=tagged_steps,
     )
 
 

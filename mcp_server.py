@@ -237,6 +237,114 @@ def qa_run(
 
 
 @mcp.tool()
+def qa_tagged(
+    steps: str,
+    url: str | None = None,
+    headless: bool = True,
+    init_script: str | None = None,
+    http_credentials: dict | None = None,
+    trace: bool = False,
+    continue_on_fail: bool = False,
+) -> dict:
+    """Run a deterministic tagged-DSL assertion suite. NO LLM is used.
+
+    Use this for smoke checks where the assertions are known up front:
+    log-in flows you've scripted, regression checks for a fixed page,
+    CI gates where you want zero LLM cost and deterministic timing.
+    Each step's verdict is independent — assertions either pass or the
+    run FAILs at the first step that doesn't (override with
+    continue_on_fail=True).
+
+    Args:
+        steps: The tagged-DSL program. One step per line. See
+            qa_agent.tagged docstring for the full grammar:
+                click <selector>
+                type <selector> "text"
+                goto <url> / wait <ms> / wait_for <sel> [timeout_ms]
+                press <key> / scroll up|down / screenshot / evaluate <jsExpr>
+                expect_visible / expect_hidden <sel> [timeout_ms]
+                expect_text "<substring>"
+                expect_url <regex>
+                expect_count <sel> <op> <n>
+                expect_eval <jsExpr> <op> "<expected>"
+            Selectors: `button "OK"`, `dialog`, `"Click me"` (text),
+            CSS (`.x`, `#y`, `[data-testid=foo]`).
+        url: Optional starting URL — if set, ran via `goto` before the
+            first step. Convenience for the common case.
+        headless: Run browser headless. Default True.
+        init_script: Same as in qa_run — runs in every new page BEFORE
+            any page-side script. Use for pre-seeding auth.
+        http_credentials: `{"username": "...", "password": "..."}` for
+            Basic-auth challenges across navigation/fetch/EventSource.
+        trace: Record a Playwright trace.zip to <screenshots_dir>/.
+        continue_on_fail: If True, keep running every step regardless
+            of failures (useful for collecting all assertion failures
+            in one run instead of stopping at the first).
+
+    Returns:
+        dict with keys: status, description, steps, elapsed, tagged=True,
+        confidence (1.0 on clean PASS, 0.0 on any FAIL), screenshots,
+        screenshots_dir, console_errors, network_errors, flicker_events,
+        trace_path, console_log_path/network_log_path/flicker_log_path,
+        step_results (list of per-step verdicts).
+    """
+    cli_args: list[str] = ["--tagged", "/dev/stdin", "-v"]  # placeholder
+    # We need the steps as a tempfile because --tagged takes a path.
+    fd, sp = tempfile.mkstemp(suffix=".tagged", prefix="qa_steps_",
+                              dir=str(REPO_DIR))
+    try:
+        with open(fd, "w", encoding="utf-8") as f:
+            f.write(steps)
+        cli_args = ["--tagged", sp, "-v"]
+        if headless:
+            cli_args.append("--headless")
+        if url:
+            cli_args += ["--url", url]
+        if trace:
+            cli_args.append("--trace")
+        if continue_on_fail:
+            cli_args.append("--continue-on-fail")
+        if http_credentials:
+            u = http_credentials.get("username", "")
+            p = http_credentials.get("password", "")
+            if not u:
+                return {
+                    "status": "ERROR",
+                    "description": "http_credentials needs `username` and `password`",
+                    "steps": 0, "elapsed": 0.0, "log": "",
+                }
+            cli_args += ["--http-creds", f"{u}:{p}"]
+        # init_script via tempfile (same pattern as qa_run).
+        init_path: str | None = None
+        if init_script is not None:
+            ifd, init_path = tempfile.mkstemp(
+                suffix=".js", prefix="qa_init_", dir=str(REPO_DIR),
+            )
+            with open(ifd, "w", encoding="utf-8") as f:
+                f.write(init_script)
+            cli_args += ["--init-script", init_path]
+        try:
+            # Step count drives the timeout; tagged steps are fast
+            # (~50–500ms each except wait/goto). 60s base + 5s per step.
+            step_count = max(1, sum(1 for line in steps.splitlines()
+                                    if line.strip()
+                                    and not line.strip().startswith("#")))
+            timeout = 60.0 + step_count * 5.0
+            return _run_cli(cli_args, timeout=timeout)
+        finally:
+            if init_path:
+                try:
+                    Path(init_path).unlink()
+                except OSError:
+                    pass
+    finally:
+        try:
+            Path(sp).unlink()
+        except OSError:
+            pass
+
+
+@mcp.tool()
 def qa_setup_metamask(headless: bool = True) -> dict:
     """One-time MetaMask wallet setup with a test seed phrase.
 
