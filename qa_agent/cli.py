@@ -70,6 +70,17 @@ def main() -> None:
                              "to Playwright's http_credentials kwarg — "
                              "resolves Basic-auth challenges on every "
                              "navigation/fetch/EventSource transparently.")
+    parser.add_argument("--trace", action="store_true",
+                        help="Record a Playwright trace (DOM snapshots, "
+                             "screenshots, network) to <screenshots_dir>/"
+                             "trace.zip. Open with `playwright show-trace "
+                             "<path>` for time-travel debugging. ~5–15MB "
+                             "per run.")
+    parser.add_argument("--show-browser", action="store_true",
+                        help="Headed mode + pause before close so you can "
+                             "inspect the live browser. Implies --headless "
+                             "off. Blocks on stdin until Enter; safe for "
+                             "interactive sessions, NOT for CI.")
 
     args = parser.parse_args()
 
@@ -177,12 +188,28 @@ def main() -> None:
         finish_summary.update(rec)
 
     try:
+        # --show-browser overrides --headless and pauses before close so
+        # the operator can inspect the live state. Wired via before_close.
+        headless_eff = False if args.show_browser else args.headless
+
+        def _show_browser_pause(_page, _ctx) -> None:
+            print(
+                "[--show-browser] press Enter in this terminal to "
+                "close the browser and exit...", file=sys.stderr,
+            )
+            try:
+                input()
+            except (KeyboardInterrupt, EOFError):
+                pass
+
         status, description, steps_used = run_task(
-            args.task, args.url, args.headless, args.verbose,
+            args.task, args.url, headless_eff, args.verbose,
             args.max_steps, extensions or None,
             init_script=init_script_src,
             on_finish=_capture_finish,
+            before_close=(_show_browser_pause if args.show_browser else None),
             http_credentials=http_creds,
+            trace=args.trace,
         )
     except Exception as e:
         if args.json_result:
@@ -200,6 +227,9 @@ def main() -> None:
             "description": description,
             "steps": steps_used,
             "elapsed": round(time.time() - t_start, 1),
+            "confidence": finish_summary.get("confidence"),
+            "uncertainty_reasons": finish_summary.get("uncertainty_reasons", []),
+            "signals": finish_summary.get("signals", {}),
             "screenshots": finish_summary.get("screenshots", []),
             "screenshots_dir": finish_summary.get("screenshots_dir"),
             "console_errors": finish_summary.get("console_errors", 0),
@@ -210,5 +240,6 @@ def main() -> None:
             "flicker_log_path": finish_summary.get("flicker_log_path"),
             "done_reasks_log_path": finish_summary.get("done_reasks_log_path"),
             "done_reasks_log": finish_summary.get("done_reasks_log", []),
+            "trace_path": finish_summary.get("trace_path"),
         })
     sys.exit(0 if status == "PASS" else 1)

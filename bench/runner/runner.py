@@ -242,11 +242,19 @@ def run_one(fixture_id: str, *, headless: bool | None = None,
 
 
 def run_many(fixture_ids: list[str], *, headless: bool | None = None,
-             verbose: bool = False) -> list[dict]:
+             verbose: bool = False, fail_fast: bool = False) -> list[dict]:
     summaries = []
     for fid in fixture_ids:
-        summaries.append(run_one(fid, headless=headless, verbose=verbose))
-    pass_count = sum(1 for s in summaries if s["assert_ok"])
+        s = run_one(fid, headless=headless, verbose=verbose)
+        summaries.append(s)
+        # SKIP fixtures (e.g. underfunded web3) don't count as a fail.
+        is_fail = (s.get("assert_ok") is False) and not s.get("skipped")
+        if fail_fast and is_fail:
+            print()
+            print(f"[bench] --fail-fast: stopping after {fid} FAIL "
+                  f"({len(summaries)}/{len(fixture_ids)} attempted)")
+            break
+    pass_count = sum(1 for s in summaries if s.get("assert_ok"))
     print()
     print(f"[bench] {pass_count}/{len(summaries)} fixtures PASS")
     return summaries
@@ -262,6 +270,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--level", type=int, help="only this level (1..8)")
     ap.add_argument("--headed", action="store_true",
                     help="show browser (overrides fixture headless setting)")
+    ap.add_argument("--fail-fast", action="store_true",
+                    help="stop after the first fixture FAIL (skips don't "
+                         "count). Useful for CI and bisection.")
     ap.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args(argv)
 
@@ -276,7 +287,10 @@ def main(argv: list[str] | None = None) -> int:
         if not ids:
             print("[bench] no fixtures match the filters", file=sys.stderr)
             return 2
-        summaries = run_many(ids, headless=headless, verbose=args.verbose)
+        summaries = run_many(
+            ids, headless=headless, verbose=args.verbose,
+            fail_fast=args.fail_fast,
+        )
         return 0 if all(s["assert_ok"] for s in summaries) else 1
 
     ap.print_help()

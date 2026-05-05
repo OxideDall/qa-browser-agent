@@ -24,6 +24,7 @@ python -m bench.runner --all                 # full suite
 python -m bench.runner --category static_ui  # filter by category
 python -m bench.runner --level 3             # filter by level
 python -m bench.runner static_l3_pricing     # single fixture
+python -m bench.runner --all --fail-fast     # stop after first FAIL (skips OK)
 python -m bench.analyze                      # aggregate results/runs/*.jsonl
 python -m bench.ab promptA.txt promptB.txt   # A/B two SYSTEM_PROMPTs
 ```
@@ -140,7 +141,7 @@ Every browser run automatically captures four streams that the original loop dro
 
 - **Per-step screenshots — before AND after**. Browser: JPEG (`q60`, `full_page=True`) at `qa_screenshots/run_<UTC>_<pid>/step_NNN.jpg` (post-action) and `step_NNN_pre.jpg` (pre-action, only emitted for `act_exec` steps — `done` paths don't generate one because no DOM action runs). Android: PNG via `device.screenshot(path)`. Paths land on `step_record["screenshot"]` and `step_record["screenshot_pre"]`. Final summary keys: `screenshots: list[str]`, `screenshots_dir: str`. `full_page=True` was deliberate — viewport-only shots inconsistently captured fixed-positioned overlays because of scroll position; the vision capture path additionally calls `window.scrollTo(0, 0)` before each shot for the same reason.
 - **Console + uncaught exceptions**. `page.on("console")` + `page.on("pageerror")` cover every page in the context — including new tabs spawned later (MM popups, target=_blank). Records land on `ctx.console_log`; per-step slice is in `step_record["console"]`. Final counter (errors only, not warns): `console_errors`.
-- **Failed HTTP responses + request failures**. `context.on("response")` filters status≥400, `context.on("requestfailed")` catches DNS / TLS / aborted. Per-step slice: `step_record["network"]`. Final counter: `network_errors`.
+- **Failed HTTP responses + request failures**. `context.on("response")` filters status≥400, `context.on("requestfailed")` catches DNS / TLS / aborted. For 4xx/5xx responses we additionally pull `resp.body()` and stash up to 2KB on the record's `body` field — most backend errors carry the actual reason in the body ("validation failed: missing field 'email'") which you need in the audit trail. Per-step slice: `step_record["network"]`. Final counter: `network_errors`.
 - **Flicker (sub-second DOM oscillation)**. `qa_agent/browser.py::MUTATION_INIT_SCRIPT` injects a MutationObserver before any page script runs; it writes to a bounded `window.__qa_mutations` ring buffer. After every action `qa_agent/runtime/actions.py::detect_flicker` drains the buffer and emits one event per node-fingerprint that flapped ≥`FLICKER_MIN_FLAPS=4` times within `FLICKER_WINDOW_MS=500`. Per-step slice: `step_record["flicker"]`. Final counter: `flicker_events`.
 
 When console/network produced anything error-level during a step, `_emit_step` builds a compact `[DIAG since last action]` blurb and stashes it on `ctx.pending_diag`. The very next `act_think` prepends it to the user message so the LLM sees diagnostic context **before** committing to an action. The two SYSTEM_PROMPTs (browser / android) tell the agent how to interpret these blocks — don't drop those instructions when editing the prompt.
@@ -164,6 +165,22 @@ Three counters on `AgentCtx` short-circuit otherwise-budget-burning loops:
 ### `--http-creds user:pass` for Basic auth
 
 CLI flag (`--http-creds user:pass`) and MCP `qa_run(http_credentials={"username":..., "password":...})` forward to Playwright's `http_credentials` context kwarg. Resolves Basic-auth challenges across every navigation, fetch, **and EventSource** in the context — the latter is why a `fetch`-monkeypatch via `init_script` isn't enough (SSE doesn't accept custom request headers, so an injected fetch wrapper breaks streaming endpoints).
+
+### Confidence score & quality signals
+
+`AgentCtx.signals` is a cumulative counter dict (`done_reasks`, `hallucinated_ids`, `soft_loops`, `vision_repeats`, `parse_errors`, `flicker`). Distinct from the resettable counters of the same names (`ctx.parse_errors`, `ctx.vision_repeat`) — those drive single-incident breakers; `ctx.signals` accumulates for the whole-run quality picture.
+
+`agent.py::_compute_confidence(ctx)` turns those signals into a score ∈ [0, 1] plus a list of human-readable `uncertainty_reasons`. Weights live in `_CONFIDENCE_WEIGHTS`. The penalty is sub-linear past the first incident (`weight * (1 + 0.5*(n-1))`) so a single flake doesn't collapse the score, but a noisy run drops steeply.
+
+The score is **not a probability** — it's a heuristic CI-gate signal. Operators should treat `PASS with confidence < 0.5` as a soft-PASS that needs human review. Both `signals` and `confidence` ride in the on_finish summary, MCP `qa_run` return dict, and CLI `--json-result` line.
+
+### `--trace` Playwright tracing
+
+`run_task(trace=True)` (CLI: `--trace`, MCP: `qa_run(trace=True)`) starts `context.tracing.start(snapshots=True, screenshots=True, sources=False)` after `_attach_diagnostics` and stops with `tracing.stop(path=<screenshots_dir>/trace.zip)` before `context.close()`. Open with `playwright show-trace <path>` for time-travel debugging — DOM snapshot + screenshot + console + network at every actionable point. ~5–15 MB per run; opt-in.
+
+### `--show-browser` (CLI only)
+
+`--show-browser` overrides `--headless` to off and wires a `before_close` callback that blocks on stdin until Enter. Use this for live inspection when vision is suspected of fabricating observations — reproduce, pause, look at the actual page yourself. **Not safe for CI** (will hang).
 
 ### Vision hallucination guard (`runtime/fsm_actions.py::_run_vision`)
 

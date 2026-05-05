@@ -64,6 +64,42 @@ def _count_console_errors(log: list[dict]) -> int:
     return sum(1 for r in log if r.get("level") in _CONSOLE_ERROR_LEVELS)
 
 
+# Per-signal weights for confidence_score. Tuned so a single done-reask
+# or hallucinated id drops a clean run to ~0.8 (still PASS, but visible),
+# and accumulating multiple signals can drive a verbose run below 0.5
+# even if final status is PASS — the operator's CI gate.
+_CONFIDENCE_WEIGHTS = {
+    "done_reasks":      0.20,
+    "hallucinated_ids": 0.20,
+    "soft_loops":       0.15,
+    "vision_repeats":   0.10,
+    "parse_errors":     0.05,
+    "flicker":          0.05,
+}
+
+
+def _compute_confidence(ctx) -> tuple[float, list[str]]:
+    """Composite confidence score in [0, 1] + a list of human-readable
+    reasons explaining why it isn't 1.0. Empty reasons list ⇔ score=1.0.
+
+    Not a probability. A heuristic the operator can use for CI gating:
+    PASS with confidence < 0.5 should be treated as soft-PASS.
+    """
+    reasons: list[str] = []
+    score = 1.0
+    sig = ctx.signals
+    for name, weight in _CONFIDENCE_WEIGHTS.items():
+        n = sig.get(name, 0)
+        if n <= 0:
+            continue
+        # Sub-linear penalty on counts > 1 so a flaky run doesn't
+        # immediately collapse to zero — but it does drop steeply.
+        penalty = weight * (1 + 0.5 * (n - 1))
+        score -= penalty
+        reasons.append(f"{n} {name.replace('_', ' ')}")
+    return max(0.0, min(1.0, round(score, 3))), reasons
+
+
 def _attach_diagnostics(ctx) -> None:
     """Wire console / pageerror / network listeners onto every page in the
     BrowserContext. New tabs (extension popups, target=_blank links) get
@@ -119,6 +155,21 @@ def _attach_diagnostics(ctx) -> None:
             if st < 400:
                 return
             req = resp.request
+            # Try to grab the response body for failed requests — most
+            # backend errors carry the actual reason in the body
+            # ("validation failed: missing field 'email'") which an
+            # operator needs in the audit trail. Capped at 2KB to keep
+            # the JSONL artefact lean.
+            body_excerpt: str | None = None
+            try:
+                raw = resp.body()
+                if raw:
+                    text = raw.decode("utf-8", errors="replace")
+                    body_excerpt = text[:2048]
+                    if len(text) > 2048:
+                        body_excerpt += f"... [+{len(text) - 2048} bytes]"
+            except Exception:
+                pass
             ctx.network_errors.append({
                 "ts": time.time(),
                 "kind": "http",
@@ -126,6 +177,7 @@ def _attach_diagnostics(ctx) -> None:
                 "method": req.method,
                 "url": resp.url[:300],
                 "type": req.resource_type,
+                "body": body_excerpt,
             })
         except Exception:
             pass
@@ -298,6 +350,7 @@ def run_task(task: str, url: str | None, headless: bool, verbose: bool,
              before_close: Callable[[Page, "object"], None] | None = None,
              profile_dir=None,
              http_credentials: dict | None = None,
+             trace: bool = False,
              ) -> tuple[str, str, int]:
     """Run a QA task end-to-end. Returns (status, description, steps_used).
 
@@ -347,6 +400,21 @@ def run_task(task: str, url: str | None, headless: bool, verbose: bool,
         # anything. After this point every event the SPA fires is captured.
         _attach_diagnostics(ctx)
 
+        # Optional Playwright tracing — records DOM snapshots, screenshots,
+        # network at every actionable point. Output is a single .zip
+        # opened with `playwright show-trace <path>`. Off by default
+        # (5–15 MB per run is overkill for clean CI passes).
+        ctx.trace_active = False
+        if trace:
+            try:
+                ctx.context.tracing.start(
+                    snapshots=True, screenshots=True, sources=False,
+                )
+                ctx.trace_active = True
+            except Exception as e:
+                if verbose:
+                    print(f"  [tracing.start failed: {e}]")
+
         # Track new popup/tab pages (MetaMask opens approval popups).
         _new_pages: list[Page] = []
         ctx.context.on("page", lambda pg: _new_pages.append(pg))
@@ -393,12 +461,28 @@ def run_task(task: str, url: str | None, headless: bool, verbose: bool,
 
         elapsed = time.time() - ctx.t_start
 
+        # Stop tracing first so the .zip is flushed before _dump_artefacts
+        # surfaces its path in the summary. tracing.stop is best-effort —
+        # failures during stop don't taint the run.
+        trace_path: str | None = None
+        if getattr(ctx, "trace_active", False) and ctx.screenshots_dir is not None:
+            try:
+                tp = ctx.screenshots_dir / "trace.zip"
+                ctx.context.tracing.stop(path=str(tp))
+                trace_path = str(tp)
+            except Exception as e:
+                if verbose:
+                    print(f"  [tracing.stop failed: {e}]")
+
         # Dump artefact JSONL files next to screenshots, then emit final
         # summary BEFORE before_close so the assert hook can read the
         # recorded result. before_close still has live page+context.
         artefact_paths = _dump_artefacts(ctx)
+        if trace_path:
+            artefact_paths["trace_path"] = trace_path
         if on_finish:
             try:
+                conf, conf_reasons = _compute_confidence(ctx)
                 summary = {
                     "t": "result",
                     "status": ctx.status,
@@ -417,6 +501,9 @@ def run_task(task: str, url: str | None, headless: bool, verbose: bool,
                     "network_errors": len(ctx.network_errors),
                     "flicker_events": len(ctx.flicker_log),
                     "done_reasks_log": list(ctx.done_reasks_log),
+                    "signals": dict(ctx.signals),
+                    "confidence": conf,
+                    "uncertainty_reasons": conf_reasons,
                 }
                 summary.update(artefact_paths)
                 on_finish(summary)
@@ -556,6 +643,7 @@ def run_android_task(task: str, package: str | None, *,
     artefact_paths = _dump_artefacts(ctx)
     if on_finish:
         try:
+            conf, conf_reasons = _compute_confidence(ctx)
             summary = {
                 "t": "result",
                 "status": ctx.status,
@@ -574,6 +662,9 @@ def run_android_task(task: str, package: str | None, *,
                 "network_errors": 0,         # android: no http capture
                 "flicker_events": 0,
                 "done_reasks_log": list(ctx.done_reasks_log),
+                "signals": dict(ctx.signals),
+                "confidence": conf,
+                "uncertainty_reasons": conf_reasons,
             }
             summary.update(artefact_paths)
             on_finish(summary)

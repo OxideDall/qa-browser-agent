@@ -86,6 +86,23 @@ class AgentCtx:
     # has returned that same string. ≥2 → forced FAIL ("vision stuck").
     last_vision_act: str = ""
     vision_repeat: int = 0
+    # Cumulative quality signals — distinct from the counters above
+    # (which are sliding/resettable). These never reset, accumulate
+    # across the whole run, and feed `compute_confidence(ctx)` into
+    # the final summary. Operators use the score to gate CI: a PASS
+    # with confidence < 0.5 is a soft-PASS and probably needs a
+    # human eyeball.
+    signals: dict = field(default_factory=lambda: {
+        "done_reasks": 0,
+        "soft_loops": 0,
+        "vision_repeats": 0,
+        "hallucinated_ids": 0,
+        "parse_errors": 0,
+        "flicker": 0,
+    })
+    # Tracing toggle — true while context.tracing.start was successful;
+    # run_task uses it to decide whether to call tracing.stop().
+    trace_active: bool = False
 
     # --- result / timing -------------------------------------------------
     status: str = "ERROR"

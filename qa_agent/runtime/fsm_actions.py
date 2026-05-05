@@ -321,6 +321,7 @@ def act_classify(ctx: AgentCtx) -> None:
     # bail with a forced FAIL instead of burning the whole budget.
     if action == "error":
         ctx.parse_errors += 1
+        ctx.signals["parse_errors"] += 1
         if ctx.parse_errors >= 3:
             raw = (ctx.resp_text or "").strip().replace("\n", " ")[:160]
             ctx.args = [
@@ -362,6 +363,7 @@ def act_evidence_gate(ctx: AgentCtx) -> None:
     elif verdict == "reask":
         ctx.step_record["done_reasked"] = True
         ctx.step_record["evidence_present"] = False
+        ctx.signals["done_reasks"] += 1
         ctx.done_reasks_log.append({
             "step": ctx.step,
             "description": description,
@@ -564,6 +566,7 @@ def act_loop_check(ctx: AgentCtx) -> None:
         ctx.send_event(AgentEvent.HARD_LOOP)
     elif kind == "soft":
         ctx.step_record["loop_hit"] = "soft"
+        ctx.signals["soft_loops"] += 1
         ctx.send_event(AgentEvent.SOFT_LOOP)
     else:
         ctx.send_event(AgentEvent.NO_LOOP)
@@ -615,6 +618,7 @@ def _run_vision(ctx: AgentCtx, reason: str) -> None:
         cur = f"{action}:{':'.join(args)}"
         if cur == ctx.last_vision_act:
             ctx.vision_repeat += 1
+            ctx.signals["vision_repeats"] += 1
         else:
             ctx.vision_repeat = 1
             ctx.last_vision_act = cur
@@ -654,6 +658,7 @@ def _run_vision(ctx: AgentCtx, reason: str) -> None:
                 ctx.step_record["vision_hallucinated"] = {
                     "action": action, "id": eid, "valid_ids": valid_ids,
                 }
+                ctx.signals["hallucinated_ids"] += 1
                 ctx.messages.append({
                     "role": "user",
                     "content": (
@@ -817,8 +822,11 @@ def act_exec(ctx: AgentCtx) -> None:
     # ctx.flicker_log; _emit_step's slice picks them up for this step.
     try:
         ctx.page.wait_for_timeout(200)
-        for ev in detect_flicker(ctx.page):
+        events = detect_flicker(ctx.page)
+        for ev in events:
             ctx.flicker_log.append(ev)
+        if events:
+            ctx.signals["flicker"] += len(events)
     except Exception:
         pass
 
