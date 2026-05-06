@@ -133,6 +133,21 @@ Keep the taxonomy honest: if you add evidence patterns, add regression fixtures 
 - Web3 fixtures use the dedicated `BENCH_PROFILE` (`~/.config/qa_agent/bench_profile`) that has MM pre-seeded with `BENCH_SEED`; non-web3 fixtures run profile-less.
 - Run log schema is documented in `bench/README.md` — `{t: start|step|result|assert|skip|error|attempt|note}` JSONL lines, one file per run under `bench/results/runs/`.
 
+### Macro pipeline — Phase 1.5 live-page validation
+
+`qa_agent.macros.live_validate(macro, params=..., headless=..., http_credentials=..., trace=...)` actually drives a browser through the compiled macro and reports per-step verdicts. Returns `LiveValidationResult` with `passed`, `score (n_passed/n_steps)`, `failed_step`, `failed_message`, `step_results`, `confidence`. Cost: one full browser launch per call.
+
+Why it exists alongside the structural validation in Phase 1: structural alignment catches inference errors against captured traces, but it doesn't catch (a) role-only selectors that don't bind on the live page, (b) site drift between mining and validation, (c) timing assumptions that weren't apparent in static traces. Live replay catches all three.
+
+**`emit.py` writes `meta.examples`** — up to 5 sample param dicts mined from the actual occurrences. `live_validate` picks the first complete example that covers all required params if `params=None`. Without examples in meta, `_pick_example_params` raises ValueError and the operator must supply `--param key=value` explicitly.
+
+Two surfaces:
+
+| where | how |
+|---|---|
+| `python -m qa_agent.macros.miner --live-validate` | After emit, replays each candidate against the real page. Failed live-validation deletes the emitted macro dir. Off by default (cost is one browser launch per candidate). |
+| `python -m qa_agent --validate-macro <name> [--param k=v]` | Operator-driven standalone validation. Picks examples from meta or accepts `--param` overrides. |
+
 ### Macro pipeline — Phase 1 offline miner
 
 `python -m qa_agent.macros.miner` reads accumulated capture JSONLs (Phase 0 substrate), mines frequent contiguous (verb, role) N-grams, infers parameter slots vs. concrete args, optionally asks the LLM to label / gate candidates, validates structural alignment against source captures, emits tagged-DSL macros into `~/.config/qa_agent/macros/`. Hybrid: symbolic discovery + LLM naming, neither alone.

@@ -38,6 +38,7 @@ from .library import (
     list_macros,
     load_macro,
 )
+from .validate import LiveValidationResult, live_validate
 
 __all__ = [
     "MACROS_DIR",
@@ -48,4 +49,6 @@ __all__ = [
     "compile_macro",
     "list_macros",
     "load_macro",
+    "LiveValidationResult",
+    "live_validate",
 ]

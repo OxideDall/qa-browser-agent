@@ -170,8 +170,15 @@ def _meta_dict(
     param_names: dict[tuple[int, int], str],
     occurrences: list,
     traces: list[Trace],
+    sequences: list,
 ) -> dict:
-    """Build the meta.json payload."""
+    """Build the meta.json payload.
+
+    `sequences[i]` aligns with `traces[i]` — the vocab list per trace.
+    Used to look up which TraceStep corresponds to each pattern
+    position in each occurrence (so we can capture concrete arg
+    values for `examples`).
+    """
     # Param schema in declaration order (sorted by step_idx, arg_idx).
     params_sorted = sorted(params, key=lambda p: (p.step_idx, p.arg_idx))
     meta_params: list[dict] = []
@@ -202,6 +209,34 @@ def _meta_dict(
                     url_templates.append(tmpl)
                 break
 
+    # Sample param sets — one full {param_name: observed_value} dict
+    # per occurrence (up to 5 distinct). Live-validation feeds these
+    # back into the macro to dry-run it without the operator having
+    # to invent values. Without this field, live_validate has nothing
+    # to plug into ${slot}s.
+    examples: list[dict] = []
+    for occ in occurrences[:5]:
+        trace = traces[occ.seq_id]
+        seq = sequences[occ.seq_id]
+        sample: dict = {}
+        for p in params_sorted:
+            nm = param_names.get((p.step_idx, p.arg_idx))
+            if not nm:
+                continue
+            window_pos = occ.start_idx + p.step_idx
+            if window_pos >= len(seq):
+                continue
+            vocab_item = seq[window_pos]
+            real_step = next(
+                (s for s in trace.steps if s.step_no == vocab_item.step_no),
+                None,
+            )
+            if real_step is None or p.arg_idx >= len(real_step.args):
+                continue
+            sample[nm] = real_step.args[p.arg_idx]
+        if sample and sample not in examples:
+            examples.append(sample)
+
     return {
         "name": name,
         "version": 1,
@@ -215,6 +250,7 @@ def _meta_dict(
         "learned_from_runs": sorted({
             traces[o.seq_id].run_id for o in occurrences
         })[:50],
+        "examples": examples,
     }
 
 
@@ -222,9 +258,13 @@ def emit(
     curated: CuratedMacro,
     occurrences: list,
     traces: list[Trace],
+    sequences: list,
     output_root: Path,
 ) -> Path:
     """Write the macro to disk. Returns the macro directory path.
+
+    `sequences[i]` aligns with `traces[i]` — required so meta.examples
+    can attach concrete sample param values per observed run.
 
     Refuses to overwrite an existing macro of the same name with a
     different version — caller must bump version explicitly. Same
@@ -236,6 +276,10 @@ def emit(
         )
     if curated.slots is None:
         raise ValueError("emit() requires curated.slots to be set")
+    if len(sequences) != len(traces):
+        raise ValueError(
+            f"sequences ({len(sequences)}) must align with traces ({len(traces)})"
+        )
 
     target_dir = output_root / curated.name
     target_dir.mkdir(parents=True, exist_ok=True)
@@ -259,7 +303,7 @@ def emit(
     meta = _meta_dict(
         curated.name, curated.description,
         curated.slots.params, curated.param_names,
-        occurrences, traces,
+        occurrences, traces, sequences,
     )
     (target_dir / "meta.json").write_text(
         json.dumps(meta, indent=2, ensure_ascii=False) + "\n",

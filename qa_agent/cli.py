@@ -100,6 +100,13 @@ def main() -> None:
     parser.add_argument("--list-macros", action="store_true",
                         help="Print installed macros (name, version, "
                              "support, success_rate, description) and exit.")
+    parser.add_argument("--validate-macro",
+                        help="Live-validate the named macro: load, "
+                             "compile with sample params from "
+                             "meta.examples (or --param overrides), "
+                             "replay against a real browser, report "
+                             "verdict. Mutually exclusive with task / "
+                             "--tagged / --macro.")
     parser.add_argument("--continue-on-fail", action="store_true",
                         help="Tagged / macro mode only: keep running after "
                              "a step fails (default: stop on first FAIL).")
@@ -154,7 +161,7 @@ def main() -> None:
                 )
         sys.exit(0)
 
-    if not args.task and not args.tagged and not args.macro:
+    if not args.task and not args.tagged and not args.macro and not args.validate_macro:
         parser.print_help()
         sys.exit(1)
 
@@ -222,6 +229,85 @@ def main() -> None:
             pass
 
     headless_eff = False if args.show_browser else args.headless
+
+    # Validate-macro mode: load + compile + live-replay + report. No
+    # task / --tagged / --macro coexists; this is its own short-circuit.
+    if args.validate_macro:
+        if args.tagged or args.task or args.macro:
+            print(
+                "--validate-macro is mutually exclusive with --tagged / "
+                "--macro / a natural-language task",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+
+        from .macros import live_validate, load_macro
+
+        param_overrides: dict[str, str] = {}
+        for raw in args.param:
+            if "=" in raw:
+                k, _, v = raw.partition("=")
+                param_overrides[k] = v
+
+        try:
+            macro = load_macro(args.validate_macro)
+        except Exception as e:
+            msg = (
+                f"--validate-macro {args.validate_macro!r}: "
+                f"{type(e).__name__}: {e}"
+            )
+            print(msg, file=sys.stderr)
+            if args.json_result:
+                _emit_json(original_stdout, {
+                    "status": "ERROR", "description": msg,
+                    "steps": 0, "elapsed": 0.0,
+                })
+            sys.exit(1)
+        try:
+            result = live_validate(
+                macro,
+                params=param_overrides or None,
+                headless=headless_eff,
+                http_credentials=http_creds,
+                trace=args.trace,
+            )
+        except Exception as e:
+            msg = f"live_validate failed: {type(e).__name__}: {e}"
+            print(msg, file=sys.stderr)
+            if args.json_result:
+                _emit_json(original_stdout, {
+                    "status": "ERROR", "description": msg,
+                    "steps": 0, "elapsed": 0.0,
+                })
+            sys.exit(1)
+
+        verdict = "PASS" if result.passed else result.status
+        if not args.json_result:
+            print(f"[validate-macro] {result.macro_name}: {verdict}")
+            print(f"  params used: {result.params_used}")
+            print(f"  score: {result.n_passed}/{result.n_steps} "
+                  f"({result.score:.2f})")
+            if result.failed_step is not None:
+                print(f"  failed at step {result.failed_step}: "
+                      f"{result.failed_message}")
+        else:
+            _emit_json(original_stdout, {
+                "status": result.status,
+                "description": result.description,
+                "steps": result.n_steps,
+                "elapsed": round(result.elapsed, 1),
+                "validate_macro": True,
+                "macro": result.macro_name,
+                "params_used": result.params_used,
+                "passed": result.passed,
+                "score": result.score,
+                "failed_step": result.failed_step,
+                "failed_message": result.failed_message,
+                "confidence": result.confidence,
+                "screenshots_dir": result.screenshots_dir,
+                "step_results": result.step_results,
+            })
+        sys.exit(0 if result.passed else 1)
 
     # Macro mode: load + compile + dispatch via run_macro_task. The
     # macro name and its params come from --macro / --param; URL is

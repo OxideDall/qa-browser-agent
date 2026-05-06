@@ -76,6 +76,13 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Skip structural validation against source captures.",
     )
     ap.add_argument(
+        "--live-validate", action="store_true",
+        help="After emit, replay each macro against a live browser. "
+             "Macros that fail live-validation are deleted (the dir is "
+             "removed from --macros-out). Costs one browser launch "
+             "per emitted candidate. Off by default.",
+    )
+    ap.add_argument(
         "--include-failed", action="store_true",
         help="Mine from FAIL/ERROR runs too (default: PASS only).",
     )
@@ -198,7 +205,45 @@ def main(argv: list[str] | None = None) -> int:
         # the original TraceStep for each step.
         # mine_ngrams preserved the original VocabItem objects (including
         # step_no), so this is already in place — no rebuild needed.
-        path = emit(curated, ngram.occurrences, traces, out_root)
+        path = emit(curated, ngram.occurrences, traces, sequences, out_root)
+
+        if args.live_validate:
+            from ..library import load_macro
+            from ..validate import live_validate
+            import shutil
+            try:
+                macro = load_macro(curated.name, root=out_root)
+                lv = live_validate(macro, headless=True)
+            except Exception as e:
+                lv = None
+                lv_err = f"{type(e).__name__}: {e}"
+            else:
+                lv_err = None
+
+            if lv is None or not lv.passed:
+                reason = (
+                    f"live-validate ERROR: {lv_err}"
+                    if lv_err else
+                    f"live-validate {lv.status} at step {lv.failed_step}: "
+                    f"{lv.failed_message}"
+                )
+                # Drop the emitted macro — it doesn't actually replay.
+                try:
+                    shutil.rmtree(path)
+                except OSError:
+                    pass
+                skipped.append({
+                    "name": curated.name, "support": ngram.support,
+                    "reason": reason,
+                })
+                continue
+
+            print(
+                f"[miner]   live-validate {curated.name}: PASS "
+                f"({lv.n_passed}/{lv.n_steps}, {lv.elapsed:.1f}s)",
+                file=sys.stderr,
+            )
+
         emitted.append({
             "name": curated.name, "support": ngram.support,
             "length": ngram.length, "params": list(curated.param_names.values()),
