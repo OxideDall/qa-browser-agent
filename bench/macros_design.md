@@ -127,7 +127,38 @@ emit:
 
 On real-world captures from this repo's own test runs (7 traces accumulated), the miner finds 3 candidate macros at min-support=2, including `goto + wait_for + expect_visible + ...` from the campo-staging tagged smoke runs.
 
-### Phase 1 — what's NOT done
+### Operational note — vocabulary alignment between modes
+
+Mining vocabulary depends on the source. Patterns mined from
+**LLM-mode** captures use verbs the LLM actually emits:
+`click / type / press / scroll / goto / wait / evaluate`. Patterns
+mined from **tagged-mode** captures additionally use assertion verbs
+`expect_visible / expect_hidden / expect_text / expect_url /
+expect_count / expect_eval / wait_for`, because tagged DSL has those
+verbs natively but the LLM never produces them in its DSL output.
+
+Practical consequence: a macro mined from a tagged smoke run
+(`expect_visible heading`-shaped pattern) **will not auto-detect
+during a normal LLM-driven run** — the live `MacroFSM` watches the
+LLM's action stream and the vocab token `(expect_visible, heading)`
+never appears there. The macro is still invokable explicitly via
+`--macro` / `qa_macro_run` / the tagged `macro` verb; only the
+online auto-detector skips it.
+
+To get auto-detection traction the operator should mine from
+**LLM-mode captures of realistic workflows** (logins, multi-step
+forms, cart checkouts). Tagged-mode captures are useful for
+hand-written macros and the `macro` verb in fixtures — they are
+not the right input for `--include-tagged` mining unless the
+operator deliberately wants library entries that only fire in
+tagged execution.
+
+The `--include-tagged` flag exists because the loader is policy-free
+about source mode, not because it's the recommended mode. Default
+behaviour (drop tagged-mode captures) is correct for typical
+operationalisation.
+
+## Phase 1 — what's NOT done
 
 - **Live-page dry-run validation**. Structural alignment only. Live validation can be added as `validate_live(macro, captures_dir)` that loads the macro, picks a sample params set from `learned_from_runs`, and runs `run_macro_task` against the captured URL. Cost = one browser launch per candidate, gated behind `--live-validate`.
 - **Step boundary inference**. Original plan had `boundaries.py` for finding "where a skill starts/ends" via signature deltas + anchor verbs. With contiguous N-gram mining boundaries are the N-gram itself — the structural-alignment validation catches over-clustering. If that turns out insufficient on real-world captures, add boundary detection as an inference step before emit.
