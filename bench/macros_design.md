@@ -89,7 +89,51 @@ Default-on; opt-out via `QA_DISABLE_CAPTURE=1`. Writes are best-effort — instr
 
 `screenshots_dir` and capture file share the same `run_id` stamp so post-mortem can correlate them by stem.
 
-## Phase 1 — offline miner (next)
+## Phase 1 — offline miner (DONE)
+
+Implemented in `qa_agent/macros/miner/`. CLI: `python -m qa_agent.macros.miner [--captures-dir ...] [--macros-out ...] [--min-support N] [--min-len N] [--max-len N] [--no-curate] [--no-validate] [--dry-run] [--include-failed] [--include-tagged]`.
+
+What changed from the original design:
+
+1. **Contiguous N-grams instead of PrefixSpan**. The action traces in this codebase are short and structured — gaps between meaningful actions are typically `look` / `screenshot` / `wait` (which the vocabulary pass drops). A skill is a contiguous chunk of the post-vocabulary sequence; gap-allowing PrefixSpan would over-cluster. Closed-pattern filter (BIDE-style) drops shorter N-grams that share full support with a longer extension. ~80 lines, no deps. If/when we need cross-page workflows with variable middles, swap in PrefixSpan — the pipeline is decoupled.
+
+2. **Vocabulary**. Step → `(verb, classifier)` token. `classifier` is `target_role` for click/type/select/hover/wait_for, `key:enter` etc. for press, `wait_short`/`wait_medium`/`wait_long` bucketing for wait, `url:host` for goto, `js:<head_token>` for evaluate, fixed labels (`text_assert`, `count_assert`, ...) for expect_*. Concrete arg values do NOT enter the vocabulary — that's inference territory.
+
+3. **Inference**. For each (step_idx, arg_idx) in a candidate, collects raw arg values across occurrences. All-equal → concrete arg, embedded verbatim in the tagged-DSL body. Differing → parameter candidate, types proposed via numeric / URL-shape detection. **Snapshot ids** at arg position 0 of click / hover / select / type are dropped here — they vary trivially run-to-run but aren't real parameters; replay uses role-based selectors.
+
+4. **Curation pass — symbolic OR LLM**. `curate(ngram, slots, traces, use_llm=...)`. `use_llm=False` mode synthesises a name from the vocabulary tokens, picks generic slot names (`text`/`url`/`expr`/`param_S_A`), keeps every candidate. `use_llm=True` calls `qa_agent.llm.ask_llm` with a structured-output prompt (JSON-only reply), validates the response (every inference slot must appear in the LLM's `params`, name must match `[A-Za-z_][A-Za-z0-9_]*`), drops on parse failure or `keep=false`. LLM errors fall back to offline curation rather than dropping the candidate.
+
+5. **Validation = structural alignment**. `validate()` re-walks each occurrence in the source captures and scores `(matched_steps / total_steps)` against the candidate pattern. ≥0.95 passes. Live-page replay validation (Phase 1.5 in the original plan) is **not** implemented — it's expensive (one browser per candidate) and operationally captured by the next real run that uses the macro. The structural pass catches the most common failure mode (inference hallucinated a slot or the miner over-clustered).
+
+6. **Emit**. `emit(curated, occurrences, traces, output_root)` writes:
+   - `<root>/<name>/macro.tagged.txt` — body with `${param}` placeholders
+   - `<root>/<name>/meta.json` — schema (name, version=1, description, params, preconditions.url_templates, support_count, success_rate, learned_from_runs)
+   Per-verb rendering dispatches in `_render_step`: `click <role>` (no name — captures don't carry accessible names), `type <role> ${text}`, `goto ${url}`, `press Enter`, `expect_visible <role>`, etc. `select` has no tagged-DSL counterpart, emitted as a comment so the operator can replace.
+
+End-to-end verified on synthetic 4-run "search the catalog" workload:
+
+```
+4 traces, vocab=5 tokens each
+mined 10 ngrams → 1 closed (len=5, support=4)
+inference: 1 param (`text`, observed: hammer/wrench/гвозди/отвёртка), 3 concrete
+validation: score=1.0 → pass
+emit:
+  goto "https://shop.example.com/"
+  click button
+  type textbox ${text}
+  press Enter
+  expect_visible heading
+```
+
+On real-world captures from this repo's own test runs (7 traces accumulated), the miner finds 3 candidate macros at min-support=2, including `goto + wait_for + expect_visible + ...` from the campo-staging tagged smoke runs.
+
+### Phase 1 — what's NOT done
+
+- **Live-page dry-run validation**. Structural alignment only. Live validation can be added as `validate_live(macro, captures_dir)` that loads the macro, picks a sample params set from `learned_from_runs`, and runs `run_macro_task` against the captured URL. Cost = one browser launch per candidate, gated behind `--live-validate`.
+- **Step boundary inference**. Original plan had `boundaries.py` for finding "where a skill starts/ends" via signature deltas + anchor verbs. With contiguous N-gram mining boundaries are the N-gram itself — the structural-alignment validation catches over-clustering. If that turns out insufficient on real-world captures, add boundary detection as an inference step before emit.
+- **Auto-merge / versioning**. Re-emitting an existing macro overwrites in place (same name, same version). No diff-based version bump. Manual `meta.version` bumps still work.
+
+## Phase 1 — original plan, kept for context
 
 Runs as a separate CLI: `python -m qa_agent.macros.mine [--min-runs 5] [--min-len 3]`.
 

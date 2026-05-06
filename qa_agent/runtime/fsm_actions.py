@@ -317,6 +317,22 @@ def act_classify(ctx: AgentCtx) -> None:
     ctx.args = list(args)
     ctx.step_record["action"] = action
     ctx.step_record["args"] = list(args)
+    # Resolve target element role for verbs that act on a snapshot id —
+    # the miner uses (verb, role) tuples as its mining vocabulary, so
+    # surfacing role here saves the miner from having to recover the
+    # element list out of the (long-gone) snapshot at offline time.
+    if action in ("click", "type", "select", "hover") and args:
+        try:
+            eid = int(args[0])
+        except (ValueError, TypeError):
+            eid = None
+        if eid is not None:
+            for el in (ctx.snapshot or {}).get("elements") or []:
+                if el.get("id") == eid:
+                    ctx.step_record["target_role"] = (
+                        el.get("role") or el.get("tag") or "?"
+                    )
+                    break
     ctx.prev_actions.append(f"{action}:{':'.join(args)}")
 
     # Parse-error throttle. The agent occasionally drifts into prose

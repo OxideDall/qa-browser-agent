@@ -133,6 +133,26 @@ Keep the taxonomy honest: if you add evidence patterns, add regression fixtures 
 - Web3 fixtures use the dedicated `BENCH_PROFILE` (`~/.config/qa_agent/bench_profile`) that has MM pre-seeded with `BENCH_SEED`; non-web3 fixtures run profile-less.
 - Run log schema is documented in `bench/README.md` — `{t: start|step|result|assert|skip|error|attempt|note}` JSONL lines, one file per run under `bench/results/runs/`.
 
+### Macro pipeline — Phase 1 offline miner
+
+`python -m qa_agent.macros.miner` reads accumulated capture JSONLs (Phase 0 substrate), mines frequent contiguous (verb, role) N-grams, infers parameter slots vs. concrete args, optionally asks the LLM to label / gate candidates, validates structural alignment against source captures, emits tagged-DSL macros into `~/.config/qa_agent/macros/`. Hybrid: symbolic discovery + LLM naming, neither alone.
+
+Pipeline modules in `qa_agent/macros/miner/`:
+
+| module | role |
+|---|---|
+| `loader.py` | JSONL → `Trace` (normalises LLM-mode `action` ↔ tagged-mode `verb`); drops failed / tagged runs by default |
+| `vocabulary.py` | `Trace` → `list[VocabItem]`, `(verb, classifier)` per step. Drops `look` / `screenshot` / `tab` / `macro` (operator-instrumentation, not skills). |
+| `mining.py` | contiguous N-gram mining + closed-pattern (BIDE-style) filter |
+| `inference.py` | for each (step_idx, arg_idx): all-equal args → concrete, varying → parameter slot. Snapshot-id at arg 0 of click/type/etc. dropped (varies trivially run-to-run, not a real parameter). |
+| `curator.py` | LLM names + gates candidates. Falls back to offline auto-name on LLM failure. JSON-only structured output, response validation (every inference slot must appear in LLM's `params`, name regex-checked). |
+| `validate.py` | structural alignment score: `matched_steps / total_steps` re-walked against source captures. ≥0.95 passes. Live-page validation is Phase 1.5 (not implemented). |
+| `emit.py` | per-verb tagged-DSL rendering + meta.json. `click <role>` (no name — captures lack accessible names; replay uses role-based selectors). |
+
+CLI flags: `--no-curate` (skip LLM, offline auto-name), `--no-validate` (skip structural check), `--dry-run` (print, don't write), `--include-failed` / `--include-tagged` (relax default filters), `--min-support N --min-len N --max-len N --max-emit N`.
+
+Verified on synthetic 4-run search workload: emits a clean `goto / click / type ${text} / press Enter / expect_visible` macro with proper param schema. On real-world captures (7 traces from this repo's own tests, dry-run with `--include-failed --include-tagged --min-len 1`): finds 3 candidate patterns including the campo-staging smoke workflow.
+
 ### Macro pipeline — Phase 2 replay
 
 A macro is a saved skill at `~/.config/qa_agent/macros/<name>/` (or `$QA_MACROS_DIR`):
