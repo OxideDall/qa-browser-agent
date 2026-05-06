@@ -1,8 +1,7 @@
 """Compile a curated macro to disk: tagged DSL body + meta.json.
 
-The emitter takes the curated candidate, the inferred slots, and a
-sample TraceStep per pattern step (to recover concrete arg values
-that didn't vary), and produces:
+The emitter takes the curated candidate (with its inferred slots —
+concrete args + parameter slots already attached), and produces:
 
   <macros_root>/<name>/macro.tagged.txt    # body with ${param}
   <macros_root>/<name>/meta.json           # schema (see library.py)
@@ -36,14 +35,7 @@ from pathlib import Path
 from ..library import _NAME_RE
 from .curator import CuratedMacro
 from .inference import ConcreteArgs, ParamCandidate
-from .loader import Trace, TraceStep
-
-
-def _step_lookup(trace: Trace, step_no: int) -> TraceStep | None:
-    for s in trace.steps:
-        if s.step_no == step_no:
-            return s
-    return None
+from .loader import Trace
 
 
 def _shell_quote(s: str) -> str:
@@ -78,7 +70,6 @@ def _render_step(
     concrete: list[ConcreteArgs],
     params: list[ParamCandidate],
     param_names: dict[tuple[int, int], str],
-    sample_step: TraceStep | None,
 ) -> str:
     """Produce one tagged-DSL line for one pattern step."""
     verb = pattern_item.verb
@@ -255,19 +246,10 @@ def emit(
     body_lines.append(f"# {curated.description}")
     body_lines.append("")
     for step_idx, item in enumerate(curated.pattern):
-        # Sample TraceStep for this pattern step (used for arity hints).
-        sample_step = None
-        for occ in occurrences:
-            trace = traces[occ.seq_id]
-            sample_step = _step_lookup(
-                trace, item.step_no,
-            ) if hasattr(item, "step_no") else None
-            if sample_step is not None:
-                break
         line = _render_step(
             step_idx, item,
             curated.slots.concrete, curated.slots.params,
-            curated.param_names, sample_step,
+            curated.param_names,
         )
         body_lines.append(line)
 

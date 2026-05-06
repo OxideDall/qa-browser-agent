@@ -31,7 +31,7 @@ import re
 from dataclasses import dataclass, field
 
 from ..library import _NAME_RE
-from .inference import InferredSlots, ParamCandidate
+from .inference import InferredSlots
 from .loader import Trace
 from .mining import NGram
 
