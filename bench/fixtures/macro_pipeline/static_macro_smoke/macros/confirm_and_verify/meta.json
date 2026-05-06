@@ -1,0 +1,16 @@
+{
+  "name": "confirm_and_verify",
+  "version": 1,
+  "description": "Click the Confirm button on the page, then assert the success toast appeared with the expected text.",
+  "params": [],
+  "preconditions": {},
+  "support_count": 1,
+  "success_rate": 1.0,
+  "learned_from_runs": [],
+  "examples": [],
+  "pattern": [
+    ["click", "button"],
+    ["wait_for", "#toast.show"],
+    ["expect_text", "text_assert"]
+  ]
+}

@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Confirm Page</title>
+<style>
+  body { font-family: system-ui, sans-serif; padding: 2em; max-width: 640px; }
+  button { font-size: 1em; padding: 0.6em 1.2em; cursor: pointer; }
+  #toast { display: none; margin-top: 1em; padding: 0.8em 1em;
+           background: #d4edda; color: #155724; border-radius: 4px; }
+  #toast.show { display: block; }
+</style>
+</head>
+<body>
+  <h1>Confirm your action</h1>
+  <p>Click the Confirm button below to proceed.</p>
+  <button id="confirm-btn" type="button">Confirm</button>
+  <div id="toast" role="status" aria-live="polite">Confirmed!</div>
+  <script>
+    document.getElementById('confirm-btn').addEventListener('click', () => {
+      document.getElementById('toast').classList.add('show');
+    });
+  </script>
+</body>
+</html>

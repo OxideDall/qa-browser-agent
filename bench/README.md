@@ -74,6 +74,20 @@ Each run produces `results/runs/<fixture_id>__<iso_ts>.jsonl`:
    "flicker_log_path": "...", "done_reasks_log_path": "..."}`
 - `{"t": "assert", "ok": bool, "msg": ..., "details": {...}}`
 
+## Macro-pipeline fixtures
+
+A fixture can ship its own `macros/<name>/` directory; the runner
+sets `QA_MACROS_DIR` to that path for the duration of the run, so
+the tagged DSL `macro <name>` verb and the online MacroFSM detector
+both see only this fixture's macros — sandboxed from the operator's
+user-level installation.
+
+`bench/fixtures/macro_pipeline/static_macro_smoke/` is the canonical
+example: a tagged body that delegates to a fixture-local
+`confirm_and_verify` macro (click Confirm, wait for toast, assert
+text). CI guard for the loader → compile → executor chain without
+an LLM.
+
 ## Tagged-DSL fixtures
 
 A fixture can opt out of the LLM loop entirely. Drop a `task.tagged.txt`

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import os
 import sys
 import time
 import traceback
@@ -42,6 +43,25 @@ def _maybe_serve(fixture: Fixture) -> Iterator[str | None]:
         return
     with serve(fixture.site_dir) as srv:
         yield srv.base_url
+
+
+@contextlib.contextmanager
+def _scoped_macros_dir(fixture: Fixture) -> Iterator[None]:
+    """Point QA_MACROS_DIR at the fixture-local macros/ for the
+    duration of the run, then restore. No-op when the fixture has no
+    macros dir, so existing fixtures are unaffected."""
+    if fixture.macros_dir is None:
+        yield
+        return
+    prev = os.environ.get("QA_MACROS_DIR")
+    os.environ["QA_MACROS_DIR"] = str(fixture.macros_dir.resolve())
+    try:
+        yield
+    finally:
+        if prev is None:
+            os.environ.pop("QA_MACROS_DIR", None)
+        else:
+            os.environ["QA_MACROS_DIR"] = prev
 
 
 def _resolve_url(fixture: Fixture, base_url: str | None) -> str | None:
@@ -115,7 +135,7 @@ def run_one(fixture_id: str, *, headless: bool | None = None,
     description = ""
 
     try:
-        with _maybe_serve(fixture) as base_url:
+        with _maybe_serve(fixture) as base_url, _scoped_macros_dir(fixture):
             url = _resolve_url(fixture, base_url)
 
             captured: dict = {}

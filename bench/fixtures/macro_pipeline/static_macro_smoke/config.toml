@@ -1,0 +1,16 @@
+[fixture]
+id       = "static_macro_smoke"
+category = "macro_pipeline"
+level    = 1
+title    = "Tagged-mode invocation of a fixture-local macro"
+
+[run]
+# url is left blank; the runner serves site/ on a free port and the
+# tagged body uses an empty `goto` (delegating to run_tagged_task's
+# initial navigation hook from the resolved base_url).
+headless    = true
+
+[budget]
+max_steps        = 5
+max_tokens       = 0           # tagged mode → no LLM tokens
+max_wall_seconds = 30

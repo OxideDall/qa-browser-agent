@@ -1,0 +1,5 @@
+# Tagged body: just delegate to the fixture-local macro.
+# run_tagged_task navigates to base_url (passed via fixture.url) before
+# the first step, so we don't need a `goto` here. The macro itself
+# does no navigation — it operates on the page the runner served.
+macro confirm_and_verify

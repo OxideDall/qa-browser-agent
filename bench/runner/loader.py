@@ -54,6 +54,12 @@ class Fixture:
     # with the natural-language `task` for the run path — the LLM-only
     # `task` field still gets populated for logging / discoverability.
     tagged_steps: str | None = None
+    # Fixture-local macros directory. If `<fixture>/macros/` exists,
+    # the runner sets QA_MACROS_DIR to it for the duration of the run
+    # — both the tagged DSL `macro` verb and the online MacroFSM
+    # detector see only this fixture's macros, sandboxed from the
+    # operator's user-level installation.
+    macros_dir: Path | None = None
 
 
 def _load_assert_py(path: Path) -> Callable[[dict], tuple[bool, str]]:
@@ -134,6 +140,10 @@ def load_fixture(fixture_id: str) -> Fixture:
     if not site_dir.is_dir():
         site_dir = None
 
+    macros_dir = fixture_dir / "macros"
+    if not macros_dir.is_dir():
+        macros_dir = None
+
     declarative: dict[str, Any] | None = None
     programmatic: Callable[[dict], tuple[bool, str]] | None = None
     if (fixture_dir / "assert.py").exists():
@@ -175,6 +185,7 @@ def load_fixture(fixture_id: str) -> Fixture:
         programmatic_assert=programmatic,
         fixture_dir=fixture_dir,
         tagged_steps=tagged_steps,
+        macros_dir=macros_dir,
     )
 
 

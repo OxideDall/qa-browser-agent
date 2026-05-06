@@ -1,0 +1,4 @@
+# confirm_and_verify — click the Confirm button, assert toast renders.
+click button "Confirm"
+wait_for "#toast.show" 3000
+expect_text "Confirmed!"
