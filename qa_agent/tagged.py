@@ -64,7 +64,7 @@ from playwright.sync_api import Page, TimeoutError as PwTimeout
 # Verbs the parser knows. Anything else is a parse error.
 _ACTION_VERBS = frozenset({
     "click", "type", "goto", "wait", "wait_for", "press", "scroll",
-    "evaluate", "screenshot",
+    "evaluate", "screenshot", "macro",
 })
 _ASSERT_VERBS = frozenset({
     "expect_visible", "expect_hidden", "expect_text", "expect_url",
@@ -183,6 +183,15 @@ def _validate_args(verb: str, args: list[str], line_no: int) -> None:
             )
     elif verb == "evaluate":
         need(1, "<jsExpr>")
+    elif verb == "macro":
+        need(1, "<name> [k=v ...]")
+        # Validate that any param tokens look like `key=value`.
+        for tok in args[1:]:
+            if "=" not in tok:
+                raise TaggedParseError(
+                    f"line {line_no}: macro params must be key=value, "
+                    f"got {tok!r}"
+                )
     elif verb == "expect_text":
         need(1, '"<substring>"')
     elif verb == "expect_url":
@@ -463,6 +472,60 @@ def _h_expect_count(page: Page, step: Step, res: StepResult) -> None:
     res.message = f"count {actual} {op} {expected}"
 
 
+def _h_macro(page: Page, step: Step, res: StepResult) -> None:
+    """Resolve the named macro, substitute params, recursively execute
+    its compiled body. Failure of any sub-step propagates up — this
+    macro step's status becomes that sub-step's status, and the
+    sub-step's message is prefixed with the macro name + line index."""
+    from .macros import compile_macro, load_macro
+    name = step.args[0]
+    params: dict[str, str] = {}
+    for tok in step.args[1:]:
+        k, _, v = tok.partition("=")
+        params[k] = v
+
+    try:
+        macro = load_macro(name)
+    except Exception as e:
+        res.status = "FAIL"
+        res.message = f"macro {name!r}: {type(e).__name__}: {e}"
+        return
+
+    try:
+        body = compile_macro(macro, params)
+    except Exception as e:
+        res.status = "FAIL"
+        res.message = f"macro {name!r} compile: {type(e).__name__}: {e}"
+        return
+
+    try:
+        nested_steps = parse_tagged(body)
+    except Exception as e:
+        res.status = "FAIL"
+        res.message = f"macro {name!r} parse: {type(e).__name__}: {e}"
+        return
+
+    sub_results: list[dict] = []
+    for n, sub in enumerate(nested_steps, start=1):
+        sub_res = execute_step(page, sub)
+        sub_results.append({
+            "n": n, "verb": sub.verb, "args": list(sub.args),
+            "status": sub_res.status, "message": sub_res.message,
+            "latency_ms": sub_res.latency_ms,
+        })
+        if sub_res.status != "PASS":
+            res.status = sub_res.status
+            res.message = (
+                f"macro {name!r} step {n} ({sub.verb}) "
+                f"{sub_res.status}: {sub_res.message}"
+            )
+            res.eval_result = sub_results
+            return
+
+    res.message = f"macro {name!r} ok ({len(nested_steps)} steps)"
+    res.eval_result = sub_results
+
+
 def _h_expect_eval(page: Page, step: Step, res: StepResult) -> None:
     from .actions import _execute_evaluate
     js_expr = step.args[0]
@@ -554,6 +617,7 @@ _HANDLERS = {
     "scroll": _h_scroll,
     "screenshot": _h_screenshot,
     "evaluate": _h_evaluate,
+    "macro": _h_macro,
     "expect_visible": _h_expect_visible,
     "expect_hidden": _h_expect_hidden,
     "expect_text": _h_expect_text,

@@ -17,6 +17,8 @@ python -m qa_agent --metamask "connect wallet on https://app.uniswap.org"
 python -m qa_agent --setup-metamask          # one-shot MM wallet bootstrap
 python -m qa_agent --json-result ...         # MCP mode: JSON → stdout, logs → stderr
 python -m qa_agent --tagged steps.txt        # LLM-less deterministic mode
+python -m qa_agent --macro <name> --param k=v --param k=v ...   # invoke saved skill
+python -m qa_agent --list-macros             # catalog of installed macros
 ```
 
 Bench (browser):
@@ -130,6 +132,27 @@ Keep the taxonomy honest: if you add evidence patterns, add regression fixtures 
 - `bench/runner/runner.py::run_one` orchestrates: load → pre-flight web3 balance check (`skip_if_underfunded`) → serve static site → `run_task(...)` with `on_step` / `on_finish` / `before_close` hooks → programmatic OR declarative assert → JSONL record. Retry loop honors `[budget].retries` from `config.toml`.
 - Web3 fixtures use the dedicated `BENCH_PROFILE` (`~/.config/qa_agent/bench_profile`) that has MM pre-seeded with `BENCH_SEED`; non-web3 fixtures run profile-less.
 - Run log schema is documented in `bench/README.md` — `{t: start|step|result|assert|skip|error|attempt|note}` JSONL lines, one file per run under `bench/results/runs/`.
+
+### Macro pipeline — Phase 2 replay
+
+A macro is a saved skill at `~/.config/qa_agent/macros/<name>/` (or `$QA_MACROS_DIR`):
+
+- `macro.tagged.txt` — body in tagged DSL with `${param}` placeholders.
+- `meta.json` — schema: `{name, version, description, params: [{name, type, required, default, description}], preconditions: {url_templates}, support_count, success_rate, learned_from_runs}`. Param types: `string`, `int`, `url`.
+
+Three invocation paths, all going through `qa_agent/tagged.py::execute_step` for the actual work:
+
+| path | command | when |
+|---|---|---|
+| **Standalone** | `python -m qa_agent --macro <name> --param k=v ...` (CLI) or `qa_macro_run(macro, params, ...)` (MCP) | operator script / CI gate. Spins a browser, navigates to the macro's URL precondition (overridable via `--url`), replays via `run_macro_task` → `run_tagged_task`. Full diagnostics surface. |
+| **Inline from tagged** | `macro <name> k=v ...` verb inside another `*.tagged.txt` | composing skills out of skills; tested working with the campo-staging smoke macro. |
+| **From LLM (deferred)** | not in this batch — LLM-path DSL doesn't yet expose `macro` verb | will be added once we have curated macros worth advertising. Tagged-path nesting covers operator-driven cases until then. |
+
+Public API is `qa_agent.macros.{load_macro, list_macros, compile_macro, Macro, ParamSpec, MacroNotFound, MacroParamError, MACROS_DIR}`. `compile_macro` does typed substitution: missing required → MacroParamError, unknown name → MacroParamError, type mismatch (`int` param given non-int) → MacroParamError. Tagged-DSL grammar errors surface separately at parse time, after substitution.
+
+`--list-macros` CLI flag prints installed catalog. `qa_macro_list` MCP tool returns `{macros: [...]}` with the same per-entry summary.
+
+Macros are versioned: `meta.version` is the macro author's responsibility; bumping it on every breaking change keeps replay auditable. The macro pipeline (Phase 1 miner) emits `version: 1` at first sighting and increments when the same skill name is re-mined with a different body.
 
 ### Macro pipeline — Phase 0 capture + page signatures
 

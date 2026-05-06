@@ -918,6 +918,69 @@ def run_tagged_task(steps_text: str,
     return overall_status, description, executed
 
 
+def run_macro_task(macro_name: str,
+                   params: dict | None = None,
+                   *,
+                   url: str | None = None,
+                   headless: bool = True,
+                   verbose: bool = False,
+                   extensions: list[str] | None = None,
+                   init_script: str | None = None,
+                   profile_dir=None,
+                   http_credentials: dict | None = None,
+                   trace: bool = False,
+                   continue_on_fail: bool = False,
+                   on_step: Callable[[dict], None] | None = None,
+                   on_finish: Callable[[dict], None] | None = None,
+                   before_close: Callable[[Page, "object"], None] | None = None,
+                   macros_root=None,
+                   ) -> tuple[str, str, int]:
+    """Run a saved macro by name. Loads the macro, substitutes params,
+    delegates to `run_tagged_task` with the compiled body. Returns the
+    same (status, description, steps) tuple shape.
+
+    Use this when an operator says "run the marketplace_search skill
+    with query='отвёртка'". For LLM-mid-run invocation the agent uses
+    the `macro` tagged-DSL verb instead, which calls into the macros
+    library directly without spinning a new browser.
+
+    `macros_root` overrides the default `~/.config/qa_agent/macros/`
+    storage location — used by tests to point at a temp dir without
+    polluting user state.
+    """
+    from .macros import compile_macro, load_macro
+
+    macro = load_macro(macro_name, root=macros_root)
+    body = compile_macro(macro, params or {})
+
+    # Use macro's URL precondition as start URL if caller didn't override.
+    # Macros that are tied to a specific landing page record one in
+    # meta.preconditions.url_templates; the first entry is the canonical
+    # start URL. Macros that run on whatever page the operator opens
+    # leave preconditions empty, in which case `url` must be supplied
+    # by the caller.
+    if url is None:
+        urls = macro.preconditions.get("url_templates") or []
+        if urls:
+            # Templates carry placeholders like <num>; we need a real URL.
+            # If the first entry has no placeholder, use it as-is;
+            # otherwise the operator must pass --url explicitly.
+            candidate = urls[0]
+            if "<" not in candidate:
+                url = candidate
+
+    return run_tagged_task(
+        body, url=url,
+        headless=headless, verbose=verbose,
+        extensions=extensions, init_script=init_script,
+        profile_dir=profile_dir,
+        http_credentials=http_credentials,
+        trace=trace,
+        continue_on_fail=continue_on_fail,
+        on_step=on_step, on_finish=on_finish, before_close=before_close,
+    )
+
+
 def run_android_task(task: str, package: str | None, *,
                      serial: str | None = None,
                      verbose: bool = False,

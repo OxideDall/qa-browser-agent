@@ -10,7 +10,7 @@ import sys
 import time
 
 from . import config
-from .agent import run_tagged_task, run_task
+from .agent import run_macro_task, run_tagged_task, run_task
 from .config import DEFAULT_MAX_STEPS, METAMASK_EXT, MODEL
 from .metamask import setup_metamask
 
@@ -86,9 +86,23 @@ def main() -> None:
                              "deterministic, LLM-less assertion loop "
                              "(qa_agent.tagged). Mutually exclusive with "
                              "the natural-language `task` positional.")
+    parser.add_argument("--macro",
+                        help="Name of an installed macro to invoke. "
+                             "Resolved against ~/.config/qa_agent/macros/ "
+                             "(or QA_MACROS_DIR). Compiled to tagged DSL "
+                             "with --param substitution and dispatched "
+                             "via run_macro_task. Mutually exclusive with "
+                             "the natural-language task and --tagged.")
+    parser.add_argument("--param", action="append", default=[],
+                        help="Macro parameter, format `key=value`. "
+                             "Repeatable. Required for any macro param "
+                             "marked `required`. See `--list-macros`.")
+    parser.add_argument("--list-macros", action="store_true",
+                        help="Print installed macros (name, version, "
+                             "support, success_rate, description) and exit.")
     parser.add_argument("--continue-on-fail", action="store_true",
-                        help="Tagged mode only: keep running after a step "
-                             "fails (default: stop on first FAIL).")
+                        help="Tagged / macro mode only: keep running after "
+                             "a step fails (default: stop on first FAIL).")
 
     args = parser.parse_args()
 
@@ -123,7 +137,24 @@ def main() -> None:
             })
         sys.exit(0 if status == "PASS" else 1)
 
-    if not args.task and not args.tagged:
+    if args.list_macros:
+        from .macros import list_macros
+        rows = list_macros()
+        if not rows:
+            print("(no macros installed at ~/.config/qa_agent/macros/)")
+        else:
+            for r in rows:
+                if "error" in r:
+                    print(f"  ! {r['name']}: {r['error']}")
+                    continue
+                print(
+                    f"  {r['name']:<32}  v{r['version']}  "
+                    f"params={r['n_params']}  support={r['support_count']}  "
+                    f"sr={r['success_rate']:.2f}  {r['description'][:50]}"
+                )
+        sys.exit(0)
+
+    if not args.task and not args.tagged and not args.macro:
         parser.print_help()
         sys.exit(1)
 
@@ -191,6 +222,80 @@ def main() -> None:
             pass
 
     headless_eff = False if args.show_browser else args.headless
+
+    # Macro mode: load + compile + dispatch via run_macro_task. The
+    # macro name and its params come from --macro / --param; URL is
+    # picked from meta.preconditions.url_templates if --url isn't set.
+    if args.macro:
+        if args.tagged or args.task:
+            print(
+                "--macro is mutually exclusive with --tagged / a "
+                "natural-language task", file=sys.stderr,
+            )
+            sys.exit(2)
+
+        params: dict[str, str] = {}
+        for raw in args.param:
+            if "=" not in raw:
+                msg = f"--param must be `key=value`, got {raw!r}"
+                print(msg, file=sys.stderr)
+                if args.json_result:
+                    _emit_json(original_stdout, {
+                        "status": "ERROR", "description": msg,
+                        "steps": 0, "elapsed": 0.0,
+                    })
+                sys.exit(1)
+            k, _, v = raw.partition("=")
+            params[k] = v
+
+        macro_summary: dict = {}
+        t_macro_start = time.time()
+        print(f"QA Agent: macro {args.macro} {params}")
+        try:
+            status, description, steps_used = run_macro_task(
+                args.macro, params,
+                url=args.url,
+                headless=headless_eff,
+                verbose=args.verbose,
+                init_script=init_script_src,
+                http_credentials=http_creds,
+                trace=args.trace,
+                continue_on_fail=args.continue_on_fail,
+                on_finish=lambda rec: macro_summary.update(rec),
+                before_close=(_show_browser_pause if args.show_browser else None),
+            )
+        except Exception as e:
+            if args.json_result:
+                _emit_json(original_stdout, {
+                    "status": "ERROR",
+                    "description": f"{type(e).__name__}: {e}",
+                    "steps": 0,
+                    "elapsed": round(time.time() - t_macro_start, 1),
+                })
+            raise
+
+        if args.json_result:
+            _emit_json(original_stdout, {
+                "status": status,
+                "description": description,
+                "steps": steps_used,
+                "elapsed": round(time.time() - t_macro_start, 1),
+                "macro": args.macro,
+                "params": params,
+                "tagged": True,
+                "confidence": macro_summary.get("confidence"),
+                "screenshots": macro_summary.get("screenshots", []),
+                "screenshots_dir": macro_summary.get("screenshots_dir"),
+                "console_errors": macro_summary.get("console_errors", 0),
+                "network_errors": macro_summary.get("network_errors", 0),
+                "flicker_events": macro_summary.get("flicker_events", 0),
+                "console_log_path": macro_summary.get("console_log_path"),
+                "network_log_path": macro_summary.get("network_log_path"),
+                "flicker_log_path": macro_summary.get("flicker_log_path"),
+                "trace_path": macro_summary.get("trace_path"),
+                "step_results": macro_summary.get("step_results", []),
+            })
+        sys.exit(0 if status == "PASS" else 1)
 
     # Tagged mode: read steps file, dispatch to run_tagged_task. We
     # branch here so the rest of the CLI (LLM provider banner, model

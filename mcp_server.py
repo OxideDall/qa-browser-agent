@@ -345,6 +345,98 @@ def qa_tagged(
 
 
 @mcp.tool()
+def qa_macro_run(
+    macro: str,
+    params: dict | None = None,
+    url: str | None = None,
+    headless: bool = True,
+    init_script: str | None = None,
+    http_credentials: dict | None = None,
+    trace: bool = False,
+    continue_on_fail: bool = False,
+) -> dict:
+    """Invoke an installed macro by name. NO LLM is used.
+
+    A macro is a saved skill at `~/.config/qa_agent/macros/<name>/`
+    with a tagged-DSL body and a meta.json schema. Use `qa_macro_list`
+    to discover what's available. The macro body is substituted with
+    `params`, parsed, and replayed deterministically — same diagnostics
+    surface as `qa_tagged` (per-step screenshots, console / network /
+    flicker capture, optional Playwright trace.zip).
+
+    Args:
+        macro: Macro name (must exist on disk).
+        params: Dict of `{param_name: value}` covering all required
+            params declared in the macro's meta.json. Coercion is
+            type-aware (string / int / url).
+        url: Override the macro's recorded landing URL. Macros with no
+            URL precondition require this.
+        headless: Run browser headless. Default True.
+        init_script: Optional JS source injected via context.add_init_script.
+        http_credentials: `{"username": "...", "password": "..."}` for Basic-auth.
+        trace: Record a Playwright trace.zip alongside screenshots.
+        continue_on_fail: If True, keep running every step regardless
+            of failures (default: stop at first FAIL).
+
+    Returns:
+        dict with status, description, steps, elapsed, macro, params,
+        confidence, screenshots, screenshots_dir, console_errors,
+        network_errors, flicker_events, *_log_path, trace_path,
+        step_results.
+    """
+    cli_args: list[str] = ["--macro", macro, "-v"]
+    for k, v in (params or {}).items():
+        cli_args += ["--param", f"{k}={v}"]
+    if headless:
+        cli_args.append("--headless")
+    if url:
+        cli_args += ["--url", url]
+    if trace:
+        cli_args.append("--trace")
+    if continue_on_fail:
+        cli_args.append("--continue-on-fail")
+    if http_credentials:
+        u = http_credentials.get("username", "")
+        p = http_credentials.get("password", "")
+        if not u:
+            return {
+                "status": "ERROR",
+                "description": "http_credentials needs `username` and `password`",
+                "steps": 0, "elapsed": 0.0, "log": "",
+            }
+        cli_args += ["--http-creds", f"{u}:{p}"]
+
+    init_path: str | None = None
+    if init_script is not None:
+        ifd, init_path = tempfile.mkstemp(
+            suffix=".js", prefix="qa_init_", dir=str(REPO_DIR),
+        )
+        with open(ifd, "w", encoding="utf-8") as f:
+            f.write(init_script)
+        cli_args += ["--init-script", init_path]
+    try:
+        # Macros are typically short (10-30 steps). 90s base + 5s/param
+        # rough budget covers slow logins / file uploads.
+        timeout = 90.0 + len(params or {}) * 5.0
+        return _run_cli(cli_args, timeout=timeout)
+    finally:
+        if init_path:
+            try:
+                Path(init_path).unlink()
+            except OSError:
+                pass
+
+
+@mcp.tool()
+def qa_macro_list() -> dict:
+    """List installed macros (name, version, description, params,
+    support_count, success_rate, path). Reads from
+    `~/.config/qa_agent/macros/` — empty list if none installed."""
+    from qa_agent.macros import list_macros
+    return {"macros": list_macros()}
+
+
+@mcp.tool()
 def qa_setup_metamask(headless: bool = True) -> dict:
     """One-time MetaMask wallet setup with a test seed phrase.
 

@@ -9,7 +9,7 @@ Public API (used by mcp_server.py and external callers):
 LLM provider auth: env-only — see qa_agent.providers.
 """
 
-from .agent import run_android_task, run_tagged_task, run_task
+from .agent import run_android_task, run_macro_task, run_tagged_task, run_task
 from .config import METAMASK_EXT, MODEL, PROFILE_DIR
 from .metamask import setup_metamask
 
@@ -17,6 +17,7 @@ __all__ = [
     "run_task",
     "run_android_task",
     "run_tagged_task",
+    "run_macro_task",
     "setup_metamask",
     "METAMASK_EXT",
     "PROFILE_DIR",
