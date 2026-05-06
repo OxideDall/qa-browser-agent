@@ -429,10 +429,19 @@ def _is_extension_page(page: Page) -> bool:
     return url.startswith("chrome-extension://") or url.startswith("moz-extension://")
 
 
-def extract_elements(page: Page) -> tuple[list[dict], str, bool]:
-    """Extract interactive elements. Returns (elements, dsl_text, is_fallback).
+def extract_elements(
+    page: Page,
+) -> tuple[list[dict], str, bool, list[dict]]:
+    """Extract interactive elements.
 
-    is_fallback=True means JS eval was blocked (LavaMoat etc.) and we're using CDP-safe path.
+    Returns (elements, dsl_text, is_fallback, text_snippets).
+    `text_snippets` is the visible-text bag (h1/h2/p/li/etc.) from the
+    JS extractor — used by the page-signature module for content
+    fingerprinting. Empty list on the LavaMoat-fallback path (HTML
+    parser doesn't compute it).
+
+    is_fallback=True means JS eval was blocked (LavaMoat etc.) and
+    we're using the CDP-safe parser.
     """
     try:
         page.wait_for_load_state("domcontentloaded", timeout=5000)
@@ -494,4 +503,4 @@ def extract_elements(page: Page) -> tuple[list[dict], str, bool]:
         else:
             lines.append(f"| {txt}")
 
-    return elements, "\n".join(lines), is_fallback
+    return elements, "\n".join(lines), is_fallback, list(result.get("text", []))

@@ -24,6 +24,7 @@ from .ctx import on_done_reask
 from .evidence import has_evidence
 from .loop_detect import is_oscillating
 from .mm_popup import has_mm_action
+from .page_signature import compute_signature
 
 
 # ---------------------------------------------------------------------------
@@ -168,10 +169,21 @@ def snapshot_page(ctx: Any) -> dict:
             except Exception:
                 pass
 
-    # 4) Extract interactive elements + snapshot DSL.
-    elements, elements_text, is_fallback = extract_elements(ctx.page)
+    # 4) Extract interactive elements + snapshot DSL + text snippets
+    #    (the latter feeds the page-signature content hash).
+    elements, elements_text, is_fallback, text_snippets = extract_elements(
+        ctx.page,
+    )
     if not elements:
         elements_text += "\n(No interactive elements found)"
+
+    # 4a) Page signature — structural + content fingerprints + URL
+    #     template. Stored on the snapshot so step records carry it
+    #     for later mining / dedup / macro-precondition matching.
+    try:
+        signature = compute_signature(ctx.page.url, elements, text_snippets)
+    except Exception:
+        signature = None
 
     # 5) On the LavaMoat fallback path, auto-attach a screenshot because the
     #    HTML parser misses layout cues.
@@ -197,6 +209,7 @@ def snapshot_page(ctx: Any) -> dict:
         "elements_text": elements_text,
         "is_fallback": is_fallback,
         "step_image": step_image,
+        "signature": signature,
     }
 
 

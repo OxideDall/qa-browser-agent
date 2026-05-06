@@ -21,6 +21,77 @@ from .browser import _launch_browser
 from .config import NAV_TIMEOUT, SCREENSHOT_DIR, STEP_TIMEOUT
 
 
+# ---------------------------------------------------------------------------
+# Capture writer — Phase 0 of the macro pipeline.
+#
+# Every run automatically writes a JSONL trace to
+#   ~/.config/qa_agent/captures/{browser|tagged}/<run_id>.jsonl
+# unless `QA_DISABLE_CAPTURE=1` in the environment. The format is:
+#   {"t": "start", task, url, max_steps, ts, mode}
+#   {"t": "step", ...}                — one per loop iteration
+#   {"t": "result", ...}              — final summary
+# Step records carry pre_signature / post_signature so the offline
+# miner can bucket steps by template + diff effectiveness without
+# replaying anything.
+# ---------------------------------------------------------------------------
+
+CAPTURES_ROOT = Path.home() / ".config" / "qa_agent" / "captures"
+
+
+class _Capture:
+    """Append-only JSONL writer. Tolerates anything — instrumentation
+    must never break a run, so all errors are swallowed."""
+
+    def __init__(self, kind: str, run_id: str):
+        if os.environ.get("QA_DISABLE_CAPTURE") == "1":
+            self.disabled = True
+            self.path = None
+            self._fh = None
+            return
+        self.disabled = False
+        try:
+            root = CAPTURES_ROOT / kind
+            root.mkdir(parents=True, exist_ok=True)
+            self.path = root / f"{run_id}.jsonl"
+            self._fh = self.path.open("w", encoding="utf-8")
+        except Exception:
+            self.disabled = True
+            self.path = None
+            self._fh = None
+
+    def write(self, record: dict) -> None:
+        if self.disabled or self._fh is None:
+            return
+        try:
+            self._fh.write(
+                json.dumps(record, ensure_ascii=False, default=str) + "\n"
+            )
+            self._fh.flush()
+        except Exception:
+            pass
+
+    def close(self) -> None:
+        if self._fh is None:
+            return
+        try:
+            self._fh.close()
+        except Exception:
+            pass
+
+
+def _wrap_step_callback(user_cb, capture: _Capture):
+    """Compose the user-supplied on_step (if any) with the capture
+    writer so both fire per step."""
+    def _emit(rec: dict) -> None:
+        capture.write(rec)
+        if user_cb is not None:
+            try:
+                user_cb(rec)
+            except Exception:
+                pass
+    return _emit
+
+
 def _dump_artefacts(ctx) -> dict:
     """Serialise the per-run console / network / flicker / done-reask
     streams into JSONL files next to the screenshots so post-mortem
@@ -367,12 +438,21 @@ def run_task(task: str, url: str | None, headless: bool, verbose: bool,
     Playwright tears down — used by bench fixtures to assert against the
     live DOM / localStorage / open tabs.
     """
+    # Run id stamps both the screenshots dir AND the capture file.
+    run_id = f"run_{datetime.utcnow().strftime('%Y%m%dT%H%M%S')}_{os.getpid()}"
+    capture = _Capture("browser", run_id)
+    capture.write({
+        "t": "start", "mode": "llm", "run_id": run_id, "task": task,
+        "url": url, "max_steps": max_steps, "ts": time.time(),
+    })
+
     ctx = AgentCtx(
         task=task, url=url, headless=headless, verbose=verbose,
         max_steps=max_steps,
         extensions=extensions, init_script=init_script,
         profile_dir=profile_dir,
-        on_step=on_step, on_finish=on_finish, before_close=before_close,
+        on_step=_wrap_step_callback(on_step, capture),
+        on_finish=on_finish, before_close=before_close,
         t_start=time.time(),
     )
 
@@ -384,13 +464,9 @@ def run_task(task: str, url: str | None, headless: bool, verbose: bool,
         )
         ctx.page.set_default_timeout(STEP_TIMEOUT)
 
-        # Per-run screenshot directory (one per run_task invocation).
-        # Format: qa_screenshots/run_<UTC ts>_<pid>/  — collision-free across
-        # concurrent runs.
-        ctx.screenshots_dir = (
-            SCREENSHOT_DIR
-            / f"run_{datetime.utcnow().strftime('%Y%m%dT%H%M%S')}_{os.getpid()}"
-        )
+        # Per-run screenshot directory shares its name with the capture
+        # file's run_id so post-mortem can correlate them by stem.
+        ctx.screenshots_dir = SCREENSHOT_DIR / run_id
         try:
             ctx.screenshots_dir.mkdir(parents=True, exist_ok=True)
         except Exception:
@@ -506,7 +582,28 @@ def run_task(task: str, url: str | None, headless: bool, verbose: bool,
                     "uncertainty_reasons": conf_reasons,
                 }
                 summary.update(artefact_paths)
+                capture.write(summary)
                 on_finish(summary)
+            except Exception:
+                pass
+        else:
+            # No user-supplied on_finish — still write the summary to
+            # the capture so the trace is self-contained.
+            try:
+                conf, conf_reasons = _compute_confidence(ctx)
+                capture.write({
+                    "t": "result", "status": ctx.status,
+                    "description": ctx.description,
+                    "steps_used": ctx.step,
+                    "wall_seconds": elapsed,
+                    "total_in": ctx.total_in,
+                    "total_out": ctx.total_out,
+                    "max_steps": max_steps,
+                    "confidence": conf,
+                    "uncertainty_reasons": conf_reasons,
+                    "signals": dict(ctx.signals),
+                    **artefact_paths,
+                })
             except Exception:
                 pass
 
@@ -520,12 +617,15 @@ def run_task(task: str, url: str | None, headless: bool, verbose: bool,
 
         ctx.context.close()
 
+    capture.close()
     print(f"\n{'='*50}")
     print(f"  Result: {ctx.status}")
     print(f"  {ctx.description}")
     print(f"  Steps: {ctx.step}/{max_steps} | Time: {elapsed:.1f}s")
     print(f"  Tokens: {ctx.total_in} in / {ctx.total_out} out")
     print(f"  Provider: {os.environ.get('LLM_PROVIDER', 'anthropic')}")
+    if capture.path:
+        print(f"  Capture: {capture.path}")
     print(f"{'='*50}")
 
     return ctx.status, ctx.description, ctx.step
@@ -593,13 +693,24 @@ def run_tagged_task(steps_text: str,
     if not steps:
         return "ERROR", "no steps parsed (empty input?)", 0
 
+    run_id = (
+        f"run_tagged_{datetime.utcnow().strftime('%Y%m%dT%H%M%S')}_{os.getpid()}"
+    )
+    capture = _Capture("tagged", run_id)
+    capture.write({
+        "t": "start", "mode": "tagged", "run_id": run_id,
+        "task": "tagged: " + steps_text[:80].replace("\n", " | "),
+        "url": url, "n_steps": len(steps), "ts": time.time(),
+    })
+
     ctx = AgentCtx(
         task="tagged: " + steps_text[:80].replace("\n", " | "),
         url=url, headless=headless, verbose=verbose,
         max_steps=len(steps),
         extensions=extensions, init_script=init_script,
         profile_dir=profile_dir,
-        on_step=on_step, on_finish=on_finish, before_close=before_close,
+        on_step=_wrap_step_callback(on_step, capture),
+        on_finish=on_finish, before_close=before_close,
         t_start=t_start,
     )
 
@@ -615,10 +726,7 @@ def run_tagged_task(steps_text: str,
             http_credentials=http_credentials,
         )
 
-        ctx.screenshots_dir = (
-            SCREENSHOT_DIR
-            / f"run_tagged_{datetime.utcnow().strftime('%Y%m%dT%H%M%S')}_{os.getpid()}"
-        )
+        ctx.screenshots_dir = SCREENSHOT_DIR / run_id
         try:
             ctx.screenshots_dir.mkdir(parents=True, exist_ok=True)
         except Exception:
@@ -705,9 +813,13 @@ def run_tagged_task(steps_text: str,
                 "network": network_slice,
             }
             step_results.append(record)
-            if on_step:
+            # ctx.on_step is the capture-wrapped version (whether the
+            # caller supplied an on_step or not); local `on_step` here
+            # is the user's raw callback only — using it would skip
+            # the capture write.
+            if ctx.on_step:
                 try:
-                    on_step(record)
+                    ctx.on_step(record)
                 except Exception:
                     pass
 
@@ -752,33 +864,35 @@ def run_tagged_task(steps_text: str,
         ctx.status = overall_status
         ctx.description = description
 
+        summary = {
+            "t": "result",
+            "status": overall_status,
+            "description": description,
+            "steps_used": executed,
+            "wall_seconds": elapsed,
+            "total_in": 0,
+            "total_out": 0,
+            "max_steps": len(steps),
+            "screenshots": list(ctx.screenshots),
+            "screenshots_dir": (
+                str(ctx.screenshots_dir)
+                if ctx.screenshots_dir is not None else None
+            ),
+            "console_errors": _count_console_errors(ctx.console_log),
+            "network_errors": len(ctx.network_errors),
+            "flicker_events": len(ctx.flicker_log),
+            "done_reasks_log": [],
+            "signals": {},
+            "confidence": conf,
+            "uncertainty_reasons": conf_reasons,
+            "tagged": True,
+            "step_results": step_results,
+            **artefact_paths,
+        }
+        capture.write(summary)
         if on_finish:
             try:
-                on_finish({
-                    "t": "result",
-                    "status": overall_status,
-                    "description": description,
-                    "steps_used": executed,
-                    "wall_seconds": elapsed,
-                    "total_in": 0,
-                    "total_out": 0,
-                    "max_steps": len(steps),
-                    "screenshots": list(ctx.screenshots),
-                    "screenshots_dir": (
-                        str(ctx.screenshots_dir)
-                        if ctx.screenshots_dir is not None else None
-                    ),
-                    "console_errors": _count_console_errors(ctx.console_log),
-                    "network_errors": len(ctx.network_errors),
-                    "flicker_events": len(ctx.flicker_log),
-                    "done_reasks_log": [],
-                    "signals": {},
-                    "confidence": conf,
-                    "uncertainty_reasons": conf_reasons,
-                    "tagged": True,
-                    "step_results": step_results,
-                    **artefact_paths,
-                })
+                on_finish(summary)
             except Exception:
                 pass
 
@@ -791,11 +905,14 @@ def run_tagged_task(steps_text: str,
 
         ctx.context.close()
 
+    capture.close()
     print(f"\n{'='*50}")
     print(f"  Result: {overall_status}")
     print(f"  {description}")
     print(f"  Steps: {executed}/{len(steps)} | Time: {elapsed:.1f}s")
     print(f"  Mode: tagged (no LLM)")
+    if capture.path:
+        print(f"  Capture: {capture.path}")
     print(f"{'='*50}")
 
     return overall_status, description, executed

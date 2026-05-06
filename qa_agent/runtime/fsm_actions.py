@@ -197,6 +197,11 @@ def act_new_step(ctx: AgentCtx) -> None:
     ctx.snapshot = snapshot_page(ctx)
     if ctx.snapshot["is_fallback"] and ctx.verbose and ctx.step == 1:
         print("  [fallback mode: JS eval blocked, using HTML parser + vision]")
+    # Surface the pre-action signature on the step record so per-step
+    # listeners (bench recorder, capture writer) see it without
+    # reaching into ctx.snapshot themselves.
+    if ctx.snapshot.get("signature"):
+        ctx.step_record["pre_signature"] = ctx.snapshot["signature"]
     ctx.send_event(AgentEvent.SNAPSHOT_READY)
 
 

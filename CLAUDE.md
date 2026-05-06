@@ -69,6 +69,7 @@ There is **no test runner** — `bench/fixtures/` IS the test suite. Per-fixture
 | `BENCH_ADDRESS_0`    | Address derived at `m/44'/60'/0'/0/0` from BENCH_SEED (pre-flight check)|
 | `BENCH_PASSWORD`     | MetaMask unlock password inside `bench_profile/`                        |
 | `QA_MAX_WAIT_MS`     | Hard cap for the `wait <ms>` DSL action; default 60_000. Bump for fixtures that legitimately wait on slow backends (supervisor replies, long polls). Cap, not target — agent still chooses the value, this just bounds the upper end. |
+| `QA_DISABLE_CAPTURE` | Set `1` to opt out of automatic per-run trace capture to `~/.config/qa_agent/captures/{browser,tagged}/<run_id>.jsonl`. Captures are inputs for the macro mining pipeline (see `bench/macros_design.md`); off-by-default storage is fine for one-off runs but you'll want it on for regression suites. |
 
 `mcp_server.py` auto-loads `.env` with a minimal inline parser (no python-dotenv dep). Existing env vars win over `.env` so MCP hosts can override.
 
@@ -129,6 +130,19 @@ Keep the taxonomy honest: if you add evidence patterns, add regression fixtures 
 - `bench/runner/runner.py::run_one` orchestrates: load → pre-flight web3 balance check (`skip_if_underfunded`) → serve static site → `run_task(...)` with `on_step` / `on_finish` / `before_close` hooks → programmatic OR declarative assert → JSONL record. Retry loop honors `[budget].retries` from `config.toml`.
 - Web3 fixtures use the dedicated `BENCH_PROFILE` (`~/.config/qa_agent/bench_profile`) that has MM pre-seeded with `BENCH_SEED`; non-web3 fixtures run profile-less.
 - Run log schema is documented in `bench/README.md` — `{t: start|step|result|assert|skip|error|attempt|note}` JSONL lines, one file per run under `bench/results/runs/`.
+
+### Macro pipeline — Phase 0 capture + page signatures
+
+Every run automatically writes a JSONL trace to `~/.config/qa_agent/captures/{browser,tagged}/<run_id>.jsonl`. Each step record carries a `pre_signature` from `qa_agent/runtime/page_signature.py`:
+
+- `url_template` — URL with numeric / UUID / slug-like / long-hex segments normalised, query keys sorted, values dropped.
+- `struct_hash` — 16-hex SHA-1 over `(tag, role, type, disabled, checked, has_href, has_placeholder)` per interactive element, in DOM order. Invariant under content changes.
+- `content_hash` — SHA-1 over the bag of visible text strings (lowercased, deduped). Invariant under structural changes.
+- `n_elements` — quick filter.
+
+Two pages are *same template* if `(url_template, struct_hash)` match, *same instance* if all three match. Captures are inputs for the macro mining pipeline — see `bench/macros_design.md` for the full plan (PrefixSpan/BIDE for sub-trace mining, hybrid LLM curator for naming + parameter slots, tagged DSL as the compile target, APTED for cross-site generalisation in Phase 4). Phase 0 (capture infrastructure) is what's wired today; Phases 1-4 are documented and not yet implemented.
+
+`screenshots_dir` and the capture file share the same `run_id` stamp so post-mortem can correlate them by stem.
 
 ### Two execution modes — natural-language (LLM) vs tagged (deterministic)
 
