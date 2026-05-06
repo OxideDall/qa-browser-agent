@@ -312,7 +312,19 @@ _ACTION_TO_EVENT = {
 
 
 def act_classify(ctx: AgentCtx) -> None:
-    action, args = parse_action(ctx.resp_text)
+    # Online MacroFSM (auto-invoke mode) may have stashed a synthetic
+    # action while the LLM was thinking. If so, consume it INSTEAD of
+    # parsing the LLM's reply — the macro pre-empts whatever the LLM
+    # was about to do this turn. The detector's cooldown / precondition
+    # gate ensures this doesn't fire indefinitely.
+    auto = getattr(ctx, "macro_auto_action", "")
+    if auto:
+        ctx.macro_auto_action = ""
+        action, args = parse_action(auto)
+        if ctx.verbose:
+            print(f"  {ctx.label} [macro auto-invoke] {auto[:80]}")
+    else:
+        action, args = parse_action(ctx.resp_text)
     ctx.action = action
     ctx.args = list(args)
     ctx.step_record["action"] = action

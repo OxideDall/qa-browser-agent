@@ -72,6 +72,9 @@ There is **no test runner** — `bench/fixtures/` IS the test suite. Per-fixture
 | `BENCH_PASSWORD`     | MetaMask unlock password inside `bench_profile/`                        |
 | `QA_MAX_WAIT_MS`     | Hard cap for the `wait <ms>` DSL action; default 60_000. Bump for fixtures that legitimately wait on slow backends (supervisor replies, long polls). Cap, not target — agent still chooses the value, this just bounds the upper end. |
 | `QA_DISABLE_CAPTURE` | Set `1` to opt out of automatic per-run trace capture to `~/.config/qa_agent/captures/{browser,tagged}/<run_id>.jsonl`. Captures are inputs for the macro mining pipeline (see `bench/macros_design.md`); off-by-default storage is fine for one-off runs but you'll want it on for regression suites. |
+| `QA_DISABLE_MACRO_DETECT` | Set `1` to skip the online MacroFSM detector entirely. Default behaviour is to instantiate it (no-ops if no macros installed). |
+| `QA_AUTO_MACRO` | Set `1` to switch the detector from suggest mode to auto-invoke mode — matched macros are executed without LLM consent. **Cooldown + precondition gate ensure this doesn't loop**, but operator should opt in deliberately. |
+| `QA_MACROS_DIR` | Override the macros root directory (default `~/.config/qa_agent/macros/`). Useful for sandboxed CI / bench runs and for testing without polluting user state. |
 
 `mcp_server.py` auto-loads `.env` with a minimal inline parser (no python-dotenv dep). Existing env vars win over `.env` so MCP hosts can override.
 
@@ -132,6 +135,31 @@ Keep the taxonomy honest: if you add evidence patterns, add regression fixtures 
 - `bench/runner/runner.py::run_one` orchestrates: load → pre-flight web3 balance check (`skip_if_underfunded`) → serve static site → `run_task(...)` with `on_step` / `on_finish` / `before_close` hooks → programmatic OR declarative assert → JSONL record. Retry loop honors `[budget].retries` from `config.toml`.
 - Web3 fixtures use the dedicated `BENCH_PROFILE` (`~/.config/qa_agent/bench_profile`) that has MM pre-seeded with `BENCH_SEED`; non-web3 fixtures run profile-less.
 - Run log schema is documented in `bench/README.md` — `{t: start|step|result|assert|skip|error|attempt|note}` JSONL lines, one file per run under `bench/results/runs/`.
+
+### Macro pipeline — Phase 3 online detection
+
+Child FSM next to AgentFSM: watches the parsed action stream, matches against installed macros' patterns via Aho-Corasick, suggests / auto-invokes on match. Built per `~/fsm.guide.md`: 3 states (IDLE / SCANNING / DISABLED), 3 events (STARTED / ACTION_SEEN / DISABLE), R5 child-of-parent with bridge listener, R6 minimal table (only live rows), R7 transitions only via `send`.
+
+| module | role |
+|---|---|
+| `online/aho.py` | Aho-Corasick on tuple keys (verb, classifier). Trie + failure links + output chains. ~150 LoC, no deps. |
+| `online/states.py`, `transitions.py`, `actions.py`, `ctx.py` | Standard FSM shape mirroring `qa_agent/runtime/`. |
+| `online/vocab.py` | `vocab_from_agent_ctx(parent_ctx)` — translates the just-parsed agent action into the same (verb, classifier) tokens the miner produces. Shares classifier helpers from `miner/vocabulary.py` so all three sides (miner, body-derivation, online) speak the same alphabet. |
+| `online/bridge.py` | Listener on parent `THINKING → DISPATCHING` transition (event `LLM_REPLIED`). Single-purpose proxy: read `parent_ctx.action`/`.args`/`.snapshot`, stash a vocab tuple on child ctx, fire ACTION_SEEN. R2-compliant. |
+| `online/manager.py` | `MacroManager(parent_fsm, parent_ctx)` — loads installed macros, builds the automaton, instantiates the child FSM, registers the bridge, sends STARTED. Pre-feeds a synthetic `goto` for the implicit run-start navigation (which `run_task` performs outside the FSM). |
+
+**Modes**:
+- **suggest** (default): on match, append a `[MACRO HINT] sub-trace matched ...` line to `parent_ctx.pending_diag`; LLM sees it on the next user message and decides whether to invoke. Cooldown of `DEFAULT_COOLDOWN_STEPS=4` per macro avoids spamming the same suggestion.
+- **auto** (`QA_AUTO_MACRO=1`): on match, stash a synthetic `macro <name> k=v ...` action on `parent_ctx.macro_auto_action`. `act_classify` reads & clears it on the next turn, replacing the LLM's parsed action. Falls back to suggest mode if the macro has required params with no examples available.
+- **disabled** (`QA_DISABLE_MACRO_DETECT=1`): manager doesn't instantiate the child FSM. Run proceeds exactly as before macros existed.
+
+**Pattern source**:
+- Mined macros: `meta.pattern: [["verb", "classifier"], ...]` written by `emit.py`. Direct.
+- Hand-written macros: `derive_pattern_from_body(body)` in `tagged_pattern.py` parses the tagged body and reduces each step using the same vocabulary the miner does. Loader auto-derives if `meta.pattern` is absent.
+
+**Surfaces**: `macro_detection` field in the `on_finish` summary / capture JSONL / MCP `qa_run` result / CLI `--json-result`. Counts: `n_macros_loaded`, `n_actions_seen`, `n_matches`, `n_suggestions`, `n_auto_invocations`. Plus `log` — first 50 trigger / disable events with timestamps and macro names.
+
+Verified: Aho-Corasick on 2 patterns matches `[type, type, press]` and `[click, type, press]` correctly with shared prefix; live LLM run on campo-staging with installed `quick_swagger_check` macro produces `n_matches=1, n_suggestions=1` in suggest mode; bench static_l1_confirm passes (no detection regressions).
 
 ### Macro pipeline — Phase 1.5 live-page validation
 

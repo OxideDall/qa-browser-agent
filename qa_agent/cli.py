@@ -500,5 +500,6 @@ def main() -> None:
             "done_reasks_log_path": finish_summary.get("done_reasks_log_path"),
             "done_reasks_log": finish_summary.get("done_reasks_log", []),
             "trace_path": finish_summary.get("trace_path"),
+            "macro_detection": finish_summary.get("macro_detection"),
         })
     sys.exit(0 if status == "PASS" else 1)

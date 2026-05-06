@@ -103,6 +103,12 @@ class AgentCtx:
     # Tracing toggle — true while context.tracing.start was successful;
     # run_task uses it to decide whether to call tracing.stop().
     trace_active: bool = False
+    # Online macro detector — populated by MacroManager when QA_AUTO_MACRO=1
+    # and a match fires. act_classify reads & clears this on the next
+    # LLM-reply boundary, replacing the parsed action with a
+    # synthetic `macro <name> k=v ...` invocation. Empty string ⇒ no
+    # pending auto-invoke.
+    macro_auto_action: str = ""
 
     # --- result / timing -------------------------------------------------
     status: str = "ERROR"

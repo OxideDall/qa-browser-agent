@@ -505,6 +505,10 @@ def run_task(task: str, url: str | None, headless: bool, verbose: bool,
                 print(f"  -> {start_url}")
             ctx.page.goto(start_url, timeout=NAV_TIMEOUT,
                           wait_until="domcontentloaded")
+            # Surface the auto-detected URL on ctx so MacroManager can
+            # see it (it pre-feeds a synthetic goto event for the
+            # implicit run-start navigation).
+            ctx.url = start_url
 
         # Phase-3c: the FSM replaces the old 400-line for-loop. Build it,
         # hook ctx.send_event, kick off with START. All further transitions
@@ -513,6 +517,13 @@ def run_task(task: str, url: str | None, headless: bool, verbose: bool,
         # (DONE_PASS / DONE_FAIL / ERROR) or the queue empties.
         fsm = FSM("agent", AgentState.IDLE, AGENT_TRANSITIONS, ctx)
         ctx.send_event = fsm.send
+
+        # Phase-3 online macro detector — child FSM bridged via
+        # parent.on_transition. Manager handles env-flag gating and
+        # silently no-ops if no macros are installed. Detection runs
+        # alongside the main loop until run_task tears down.
+        from .macros.online import MacroManager
+        macro_manager = MacroManager(fsm, ctx)
         try:
             fsm.send(AgentEvent.START)
         except Exception as e:
@@ -536,6 +547,12 @@ def run_task(task: str, url: str | None, headless: bool, verbose: bool,
             ctx.status = "FAIL"
 
         elapsed = time.time() - ctx.t_start
+
+        # Macro-detection finalise: detach bridge listener; collect
+        # metrics for the summary regardless of whether detection
+        # was actually enabled (manager.summary() handles disabled).
+        macro_manager.finalise()
+        macro_summary = macro_manager.summary()
 
         # Stop tracing first so the .zip is flushed before _dump_artefacts
         # surfaces its path in the summary. tracing.stop is best-effort —
@@ -580,6 +597,7 @@ def run_task(task: str, url: str | None, headless: bool, verbose: bool,
                     "signals": dict(ctx.signals),
                     "confidence": conf,
                     "uncertainty_reasons": conf_reasons,
+                    "macro_detection": macro_summary,
                 }
                 summary.update(artefact_paths)
                 capture.write(summary)

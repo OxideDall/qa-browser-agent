@@ -171,6 +171,7 @@ def _meta_dict(
     occurrences: list,
     traces: list[Trace],
     sequences: list,
+    pattern_items: tuple,
 ) -> dict:
     """Build the meta.json payload.
 
@@ -251,6 +252,7 @@ def _meta_dict(
             traces[o.seq_id].run_id for o in occurrences
         })[:50],
         "examples": examples,
+        "pattern": [list(item.key()) for item in pattern_items],
     }
 
 
@@ -304,6 +306,7 @@ def emit(
         curated.name, curated.description,
         curated.slots.params, curated.param_names,
         occurrences, traces, sequences,
+        curated.pattern,
     )
     (target_dir / "meta.json").write_text(
         json.dumps(meta, indent=2, ensure_ascii=False) + "\n",

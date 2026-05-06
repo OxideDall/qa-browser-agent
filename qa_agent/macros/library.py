@@ -94,6 +94,11 @@ class Macro:
     `body` is the raw tagged-DSL text WITH unresolved ${param}
     placeholders. Use `compile_macro(macro, params)` to get a
     substituted body ready to feed into `qa_agent.tagged.parse_tagged`.
+
+    `pattern` is the list of (verb, classifier) tuples that the online
+    detector matches against the live agent action stream. Mined macros
+    have it in meta.json; hand-written macros have it derived from the
+    tagged body via `derive_pattern_from_body` at load time.
     """
 
     name: str
@@ -107,6 +112,7 @@ class Macro:
     learned_from_runs: list[str] = field(default_factory=list)
     support_count: int = 0
     success_rate: float = 1.0
+    pattern: list[tuple[str, str]] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -191,6 +197,33 @@ def load_macro(name: str, root: Path | None = None) -> Macro:
             f"match directory name. Rename meta.name or the directory."
         )
 
+    raw_pattern = meta.get("pattern")
+    if raw_pattern is not None:
+        if not isinstance(raw_pattern, list):
+            raise MacroParamError(
+                f"macro {name!r}: meta.pattern must be a list of "
+                f"[verb, classifier] pairs"
+            )
+        pattern: list[tuple[str, str]] = []
+        for entry in raw_pattern:
+            if isinstance(entry, list) and len(entry) == 2:
+                pattern.append((str(entry[0]), str(entry[1])))
+            elif isinstance(entry, dict) and "verb" in entry and "classifier" in entry:
+                pattern.append((str(entry["verb"]), str(entry["classifier"])))
+            else:
+                raise MacroParamError(
+                    f"macro {name!r}: meta.pattern entry must be "
+                    f"[verb, classifier] or "
+                    f"{{verb, classifier}}, got {entry!r}"
+                )
+    else:
+        # Hand-written macro without pattern in meta — derive from body.
+        # Lazy import: derive_pattern_from_body lives in tagged_pattern.py
+        # to avoid circular imports (it depends on qa_agent.tagged which
+        # depends on this module's compile_macro for the `macro` verb).
+        from .tagged_pattern import derive_pattern_from_body
+        pattern = derive_pattern_from_body(body)
+
     return Macro(
         name=name,
         version=int(meta.get("version", 1)),
@@ -203,6 +236,7 @@ def load_macro(name: str, root: Path | None = None) -> Macro:
         learned_from_runs=list(meta.get("learned_from_runs") or []),
         support_count=int(meta.get("support_count", 0)),
         success_rate=float(meta.get("success_rate", 1.0)),
+        pattern=pattern,
     )
 
 
