@@ -1,0 +1,16 @@
+[fixture]
+id       = "real_wikipedia_search"
+category = "macro_real"
+level    = 3
+title    = "Search Wikipedia and verify the article opens"
+
+[run]
+url         = "https://en.wikipedia.org/wiki/Special:Search"
+headless    = true
+max_steps   = 12
+
+[budget]
+max_steps        = 12
+max_tokens       = 25000
+max_wall_seconds = 90
+retries          = 2

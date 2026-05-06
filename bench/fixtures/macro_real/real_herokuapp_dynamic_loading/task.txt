@@ -1,0 +1,4 @@
+There's a Start button on this page. Clicking it kicks off an
+async load that takes ~5 seconds; when it completes, the hidden
+text "Hello World!" appears in an h4. Click Start, wait for that
+text to render, then call done PASS quoting the loaded text.

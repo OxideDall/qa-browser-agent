@@ -40,7 +40,11 @@ CAPTURES_ROOT = Path.home() / ".config" / "qa_agent" / "captures"
 
 class _Capture:
     """Append-only JSONL writer. Tolerates anything — instrumentation
-    must never break a run, so all errors are swallowed."""
+    must never break a run, so all errors are swallowed.
+
+    Honours `QA_CAPTURES_DIR` env override for the root path; useful
+    for bench / CI scenarios that want isolated capture archives.
+    """
 
     def __init__(self, kind: str, run_id: str):
         if os.environ.get("QA_DISABLE_CAPTURE") == "1":
@@ -50,7 +54,9 @@ class _Capture:
             return
         self.disabled = False
         try:
-            root = CAPTURES_ROOT / kind
+            override = os.environ.get("QA_CAPTURES_DIR")
+            base = Path(override) if override else CAPTURES_ROOT
+            root = base / kind
             root.mkdir(parents=True, exist_ok=True)
             self.path = root / f"{run_id}.jsonl"
             self._fh = self.path.open("w", encoding="utf-8")

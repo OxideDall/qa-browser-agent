@@ -1,0 +1,16 @@
+[fixture]
+id       = "real_herokuapp_status_500"
+category = "macro_real"
+level    = 2
+title    = "Render and report a 500 status page"
+
+[run]
+url         = "https://the-internet.herokuapp.com/status_codes/500"
+headless    = true
+max_steps   = 6
+
+[budget]
+max_steps        = 6
+max_tokens       = 15000
+max_wall_seconds = 45
+retries          = 2

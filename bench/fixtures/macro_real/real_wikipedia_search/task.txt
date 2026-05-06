@@ -1,0 +1,11 @@
+You're on Wikipedia's search page. Type the query "Aho-Corasick algorithm"
+into the search box and submit. The results will show the article;
+the top hit is the Wikipedia page titled "Aho-Corasick algorithm".
+Click through to that article. Once on it, call done PASS with the
+article's H1 title wrapped in double quotes inside your description,
+e.g.:
+
+  done PASS 'h1: "Aho-Corasick algorithm"'
+
+The double-quoted text is required so the evidence gate sees a
+concrete UI string anchor.

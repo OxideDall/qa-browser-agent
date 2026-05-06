@@ -1,0 +1,16 @@
+[fixture]
+id       = "real_saucedemo_addcart"
+category = "macro_real"
+level    = 4
+title    = "Login to saucedemo + add first product to cart"
+
+[run]
+url         = "https://www.saucedemo.com/"
+headless    = true
+max_steps   = 18
+
+[budget]
+max_steps        = 18
+max_tokens       = 50000
+max_wall_seconds = 150
+retries          = 2

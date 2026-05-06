@@ -1,0 +1,7 @@
+{
+  "checks": [
+    {"type": "agent_status", "expected": "PASS"},
+    {"type": "url_contains", "value": "/secure"},
+    {"type": "dom_text_contains", "selector": "div.flash.success", "value": "You logged into a secure area"}
+  ]
+}

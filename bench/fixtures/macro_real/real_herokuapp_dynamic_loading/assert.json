@@ -1,0 +1,6 @@
+{
+  "checks": [
+    {"type": "agent_status", "expected": "PASS"},
+    {"type": "dom_text", "selector": "#finish h4", "expected": "Hello World!"}
+  ]
+}

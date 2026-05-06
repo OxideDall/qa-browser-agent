@@ -1,0 +1,9 @@
+Log in to the form authentication page using these credentials (printed
+on the page itself):
+
+  username: tomsmith
+  password: SuperSecretPassword!
+
+After submitting, the page should redirect to /secure with a green flash
+banner saying you logged in. Call done PASS quoting that flash text
+verbatim once it's visible.

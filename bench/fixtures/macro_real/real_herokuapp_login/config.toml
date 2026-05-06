@@ -1,0 +1,16 @@
+[fixture]
+id       = "real_herokuapp_login"
+category = "macro_real"
+level    = 2
+title    = "Form auth on the-internet.herokuapp.com"
+
+[run]
+url         = "https://the-internet.herokuapp.com/login"
+headless    = true
+max_steps   = 12
+
+[budget]
+max_steps        = 12
+max_tokens       = 25000
+max_wall_seconds = 90
+retries          = 2

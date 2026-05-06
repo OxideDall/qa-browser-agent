@@ -1,0 +1,11 @@
+Sauce Labs demo store. The login screen shows valid credentials right
+on the page; use:
+
+  username: standard_user
+  password: secret_sauce
+
+After logging in you'll land on the inventory page. Add the FIRST
+product (the Sauce Labs Backpack — should be the first card) to the
+cart by clicking its "Add to cart" button, then verify the cart icon
+in the top-right shows the badge "1". Call done PASS quoting that
+badge value.

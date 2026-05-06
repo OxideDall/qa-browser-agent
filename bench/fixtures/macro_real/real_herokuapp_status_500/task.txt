@@ -1,0 +1,4 @@
+This URL deliberately returns HTTP 500 with a small HTML body that
+explains "This page returned a 500 status code". The browser still
+renders the body. Read it and call done PASS quoting the visible
+phrase that mentions the 500 status code.

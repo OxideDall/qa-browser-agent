@@ -1,0 +1,16 @@
+[fixture]
+id       = "real_herokuapp_dynamic_loading"
+category = "macro_real"
+level    = 3
+title    = "Wait for async-loaded element on dynamic_loading/2"
+
+[run]
+url         = "https://the-internet.herokuapp.com/dynamic_loading/2"
+headless    = true
+max_steps   = 10
+
+[budget]
+max_steps        = 10
+max_tokens       = 25000
+max_wall_seconds = 90
+retries          = 2
