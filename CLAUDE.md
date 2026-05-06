@@ -174,6 +174,18 @@ Public API is `qa_agent.macros.{load_macro, list_macros, compile_macro, Macro, P
 
 Macros are versioned: `meta.version` is the macro author's responsibility; bumping it on every breaking change keeps replay auditable. The macro pipeline (Phase 1 miner) emits `version: 1` at first sighting and increments when the same skill name is re-mined with a different body.
 
+### Capture management — `qa_agent.macros.captures`
+
+`python -m qa_agent.macros.captures <stats|list|gc>` — operational hygiene for the capture archive (Phase 0 substrate). Captures grow without bound by default; this is how you prune.
+
+| subcommand | what |
+|---|---|
+| `stats` | inventory size, counts by mode (llm/tagged) and final status (PASS/FAIL/ERROR), oldest+newest mtimes |
+| `list [--mode] [--status] [--limit N]` | per-capture metadata table — run_id, mode, status, steps, total size (JSONL + screenshots), age in days |
+| `gc --days N [--apply] [--keep-failed]` | drop captures older than `N` days. Default dry-run; `--apply` actually deletes. `--keep-failed` exempts FAIL/ERROR captures (often you want those preserved for debugging long after pruning successful runs). |
+
+GC also removes the per-run `qa_screenshots/<run_id>/` directory so Phase 0's run_id-stamp symmetry stays clean. Public API: `qa_agent.macros.captures.{compute_stats, list_captures_meta, gc_old_captures}` for tooling integration.
+
 ### Macro pipeline — Phase 0 capture + page signatures
 
 Every run automatically writes a JSONL trace to `~/.config/qa_agent/captures/{browser,tagged}/<run_id>.jsonl`. Each step record carries a `pre_signature` from `qa_agent/runtime/page_signature.py`:
