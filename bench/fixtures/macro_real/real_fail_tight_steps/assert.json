@@ -1,0 +1,6 @@
+{
+  "checks": [
+    {"type": "agent_status", "expected": "PASS"},
+    {"type": "dom_text", "selector": ".shopping_cart_badge", "expected": "1"}
+  ]
+}

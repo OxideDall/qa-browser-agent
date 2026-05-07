@@ -1,0 +1,16 @@
+[fixture]
+id       = "real_fail_impossible_text"
+category = "macro_real"
+level    = 2
+title    = "FAIL by design — expect a phrase not on the page"
+
+[run]
+url         = "https://the-internet.herokuapp.com/status_codes/500"
+headless    = true
+max_steps   = 6
+
+[budget]
+max_steps        = 6
+max_tokens       = 15000
+max_wall_seconds = 45
+retries          = 1

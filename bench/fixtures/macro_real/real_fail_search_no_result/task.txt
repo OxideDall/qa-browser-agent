@@ -1,0 +1,7 @@
+Search Wikipedia for the query "zzqxxqfff nonsense gibberish 12345"
+and click through to the article titled "Quantum Consciousness Theorem
+Of Reality". Call done PASS quoting that article's H1 verbatim.
+
+(This fixture deliberately FAILs: the search returns no exact-match
+article. The agent should recognise no results / wrong landing and
+either done FAIL, or done PASS with weak evidence the gate rejects.)

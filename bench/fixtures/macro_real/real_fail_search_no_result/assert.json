@@ -1,0 +1,7 @@
+{
+  "checks": [
+    {"type": "agent_status", "expected": "PASS"},
+    {"type": "url_contains", "value": "Quantum_Consciousness_Theorem"},
+    {"type": "dom_text_contains", "selector": "h1", "value": "Quantum Consciousness Theorem"}
+  ]
+}

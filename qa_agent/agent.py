@@ -161,6 +161,18 @@ def _compute_confidence(ctx) -> tuple[float, list[str]]:
 
     Not a probability. A heuristic the operator can use for CI gating:
     PASS with confidence < 0.5 should be treated as soft-PASS.
+
+    Two penalty families:
+      1. Self-reported quality signals (done_reasks, hallucinated_ids,
+         soft_loops, vision_repeats, parse_errors, flicker) — what the
+         agent knows about its own struggle.
+      2. Terminal-state penalty — applied when ctx.status != "PASS".
+         FAIL/ERROR runs by definition didn't reach a passing terminal,
+         so confidence collapses regardless of how clean the signals
+         were. Without this, an agent that died from `done FAIL` on
+         step 2 with no other signals scored 1.0 — the operator-level
+         calibration showed confidence on FAIL ≈ confidence on PASS,
+         making the score useless as a discriminator.
     """
     reasons: list[str] = []
     score = 1.0
@@ -174,6 +186,13 @@ def _compute_confidence(ctx) -> tuple[float, list[str]]:
         penalty = weight * (1 + 0.5 * (n - 1))
         score -= penalty
         reasons.append(f"{n} {name.replace('_', ' ')}")
+    status = getattr(ctx, "status", "PASS")
+    if status == "FAIL":
+        score -= 0.6
+        reasons.append("status=FAIL")
+    elif status == "ERROR":
+        score -= 0.8
+        reasons.append("status=ERROR")
     return max(0.0, min(1.0, round(score, 3))), reasons
 
 

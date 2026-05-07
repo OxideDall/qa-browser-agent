@@ -1,0 +1,7 @@
+The page returns HTTP 500 and renders a brief notice. Find the phrase
+"QUANTUM ENTANGLEMENT FIELD" on the page and call done PASS quoting
+it verbatim. (Note: this phrase deliberately does not exist on the
+page — this fixture exercises the FAIL path on the confidence
+calibration. The agent should either give up with done FAIL or
+attempt done PASS without the required phrase, getting rejected
+by the evidence gate.)

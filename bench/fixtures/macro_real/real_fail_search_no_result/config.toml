@@ -1,0 +1,16 @@
+[fixture]
+id       = "real_fail_search_no_result"
+category = "macro_real"
+level    = 3
+title    = "FAIL by design — search Wikipedia for nonsense, expect specific article"
+
+[run]
+url         = "https://en.wikipedia.org/wiki/Special:Search"
+headless    = true
+max_steps   = 8
+
+[budget]
+max_steps        = 8
+max_tokens       = 18000
+max_wall_seconds = 60
+retries          = 1

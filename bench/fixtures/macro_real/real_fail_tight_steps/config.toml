@@ -1,0 +1,16 @@
+[fixture]
+id       = "real_fail_tight_steps"
+category = "macro_real"
+level    = 4
+title    = "FAIL by design — saucedemo addcart with max_steps=2 (impossible)"
+
+[run]
+url         = "https://www.saucedemo.com/"
+headless    = true
+max_steps   = 2
+
+[budget]
+max_steps        = 2
+max_tokens       = 8000
+max_wall_seconds = 60
+retries          = 1

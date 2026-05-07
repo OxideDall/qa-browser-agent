@@ -1,0 +1,6 @@
+Sauce Labs demo store. Log in as standard_user / secret_sauce, add
+the first product to cart, verify the cart icon shows badge "1".
+
+(This fixture deliberately starves the agent — max_steps=2 isn't
+enough to complete the 5+-step flow. Exhaustion will trigger ERROR
+or a forced FAIL with low confidence; the assertion will fail.)
