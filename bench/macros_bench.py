@@ -231,15 +231,23 @@ def _phase_mine(
     closed = filter_redundant(raw)
 
     out: list[MineRecord] = []
+    # Same collision guard as the miner CLI: LLM curator can name two
+    # structurally-different candidates the same way; we keep the first
+    # (mining order is descending support, descending length — most
+    # general first).
+    seen_names: set[str] = set()
     for ng in closed[:30]:
         slots = infer_params(ng, seqs, traces)
         cur = curate(ng, slots, traces, use_llm=use_llm)
         if cur is None or not cur.keep:
             continue
+        if cur.name in seen_names:
+            continue
         v = validate(cur, seqs, traces, ng.occurrences)
         if not v.passed:
             continue
         path = emit(cur, ng.occurrences, traces, seqs, macros_out)
+        seen_names.add(cur.name)
         out.append(MineRecord(
             name=cur.name,
             support=ng.support,

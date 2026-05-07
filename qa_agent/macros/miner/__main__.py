@@ -157,6 +157,14 @@ def main(argv: list[str] | None = None) -> int:
 
     emitted: list[dict] = []
     skipped: list[dict] = []
+    # Collision guard: LLM curator can name two structurally-different
+    # candidates the same way ("login_with_credentials" applied to a
+    # 3-gram and a 4-gram subsequence of the same login flow). Without
+    # dedup, the second emit silently overwrites the first because the
+    # output dir is the same. We keep the first-encountered candidate
+    # (mining iter order is descending support, then descending length —
+    # so the more general / better-supported one wins).
+    seen_names: set[str] = set()
 
     for ngram in closed:
         if len(emitted) >= args.max_emit:
@@ -180,6 +188,22 @@ def main(argv: list[str] | None = None) -> int:
             skipped.append({
                 "name": curated.name, "support": ngram.support,
                 "reason": "curator gated keep=false",
+            })
+            continue
+
+        # Collision check BEFORE structural validation — cheap reject
+        # avoids the LLM-curator → validate work for a duplicate that
+        # would silently overwrite a previously-emitted macro.
+        if curated.name in seen_names:
+            skipped.append({
+                "name": curated.name,
+                "support": ngram.support,
+                "reason": (
+                    f"duplicate name (LLM curator collision); kept "
+                    f"first-mined occurrence — "
+                    f"this candidate len={ngram.length} would have "
+                    f"overwritten the prior emit"
+                ),
             })
             continue
 
@@ -244,6 +268,7 @@ def main(argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
 
+        seen_names.add(curated.name)
         emitted.append({
             "name": curated.name, "support": ngram.support,
             "length": ngram.length, "params": list(curated.param_names.values()),

@@ -311,6 +311,30 @@ _ACTION_TO_EVENT = {
 }
 
 
+def _populate_target_role(ctx: AgentCtx) -> None:
+    """Resolve the target element's role for verbs that act on a snapshot
+    id, and stamp it on the current step_record. Called from BOTH
+    act_classify (LLM-direct path) and _run_vision (post-`look` path),
+    so vision-generated actions get the same vocabulary annotation —
+    without it, miner sees `type:_` for vision steps and `type:input`
+    for direct steps and treats them as different tokens, corrupting
+    n-gram alignment.
+    """
+    action, args = ctx.action, ctx.args
+    if action not in ("click", "type", "select", "hover") or not args:
+        return
+    try:
+        eid = int(args[0])
+    except (ValueError, TypeError):
+        return
+    for el in (ctx.snapshot or {}).get("elements") or []:
+        if el.get("id") == eid:
+            ctx.step_record["target_role"] = (
+                el.get("role") or el.get("tag") or "?"
+            )
+            return
+
+
 def act_classify(ctx: AgentCtx) -> None:
     # Online MacroFSM (auto-invoke mode) may have stashed a synthetic
     # action while the LLM was thinking. If so, consume it INSTEAD of
@@ -329,22 +353,7 @@ def act_classify(ctx: AgentCtx) -> None:
     ctx.args = list(args)
     ctx.step_record["action"] = action
     ctx.step_record["args"] = list(args)
-    # Resolve target element role for verbs that act on a snapshot id —
-    # the miner uses (verb, role) tuples as its mining vocabulary, so
-    # surfacing role here saves the miner from having to recover the
-    # element list out of the (long-gone) snapshot at offline time.
-    if action in ("click", "type", "select", "hover") and args:
-        try:
-            eid = int(args[0])
-        except (ValueError, TypeError):
-            eid = None
-        if eid is not None:
-            for el in (ctx.snapshot or {}).get("elements") or []:
-                if el.get("id") == eid:
-                    ctx.step_record["target_role"] = (
-                        el.get("role") or el.get("tag") or "?"
-                    )
-                    break
+    _populate_target_role(ctx)
     ctx.prev_actions.append(f"{action}:{':'.join(args)}")
 
     # Parse-error throttle. The agent occasionally drifts into prose
@@ -639,6 +648,10 @@ def _run_vision(ctx: AgentCtx, reason: str) -> None:
     ctx.action = action
     ctx.args = list(args)
     ctx.resp_text = resp_text
+    # Same target_role annotation as act_classify — without this the
+    # miner vocabulary gets `type:_` for vision-path actions and
+    # `type:input` for direct ones, splitting one logical token in two.
+    _populate_target_role(ctx)
     if ctx.verbose:
         print(f"    vision decided: {resp_text.strip()}")
 
