@@ -39,6 +39,15 @@ def _has_pending_auto(ctx: MacroCtx) -> bool:
     return bool(getattr(ctx.parent_ctx, "macro_auto_action", None))
 
 
+def _macro_already_succeeded(ctx: MacroCtx, name: str) -> bool:
+    """True if this macro already fired-and-succeeded in this run.
+    A second auto-invocation would be redundant (page didn't change
+    after first), or actively harmful (next firing on a different
+    page with stale params). Run-lifetime lock; no expiry."""
+    fired = getattr(ctx.parent_ctx, "macro_succeeded_names", None)
+    return bool(fired) and name in fired
+
+
 def _params_from_examples(macro, parent_ctx=None) -> dict:
     """Pick a sample param dict from meta.examples, ideally matching
     the current page's URL template — multi-site macros otherwise
@@ -147,6 +156,10 @@ def act_on_action(ctx: MacroCtx) -> None:
         if macro is None:
             continue
 
+        # Run-lifetime success lock takes precedence over cooldown.
+        if _macro_already_succeeded(ctx, match.macro_name):
+            continue
+
         # Cooldown: skip if same macro fired within `cooldown_steps`.
         last = ctx.last_triggered.get(match.macro_name, -10**9)
         if parent_step - last < ctx.cooldown_steps:
@@ -216,8 +229,10 @@ def act_page_ready(ctx: MacroCtx) -> None:
     if _has_pending_auto(ctx):
         return
 
-    # Find first eligible macro: precondition match + cooldown clean.
+    # Find first eligible macro: success-lock + precondition + cooldown clean.
     for macro in ctx.macros.values():
+        if _macro_already_succeeded(ctx, macro.name):
+            continue
         if not _precondition_ok(macro, parent_ctx):
             continue
         last = ctx.last_triggered.get(macro.name, -10**9)

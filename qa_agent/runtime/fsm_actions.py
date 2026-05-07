@@ -908,6 +908,16 @@ def act_exec(ctx: AgentCtx) -> None:
     if ctx.verbose:
         print(f"    {result}")
 
+    # Mark successful macro execution on ctx so MacroFSM's
+    # detection passes can suppress re-triggering the same macro
+    # within the same run (avoids multi-firing on pages where the
+    # macro didn't navigate, e.g. locked_out_user keeps the page
+    # on the login form forever — without this guard the macro
+    # auto-invokes on every subsequent page-ready event).
+    if (ctx.action == "macro" and ctx.args
+            and result.startswith("macro '") and " OK:" in result):
+        ctx.macro_succeeded_names.add(ctx.args[0])
+
     # Drain MutationObserver buffer and detect flicker. We give the page
     # 200ms to settle so async re-renders right after a click land in the
     # buffer before we read it. Flicker entries that emerge here go onto

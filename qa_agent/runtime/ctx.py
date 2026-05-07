@@ -109,6 +109,13 @@ class AgentCtx:
     # synthetic `macro <name> k=v ...` invocation. Empty string ⇒ no
     # pending auto-invoke.
     macro_auto_action: str = ""
+    # Names of macros that successfully executed at least once during
+    # this run. MacroFSM consults this set in its precondition / page
+    # checks to refuse re-triggering an already-fired macro — without
+    # this, a login macro keeps firing on every successive page-ready
+    # event when login (e.g. locked_out_user) didn't redirect off the
+    # login page, multiplying token cost.
+    macro_succeeded_names: set = field(default_factory=set)
 
     # --- result / timing -------------------------------------------------
     status: str = "ERROR"
