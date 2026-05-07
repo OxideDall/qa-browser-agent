@@ -234,12 +234,13 @@ def _meta_dict(
                 break
 
     # Sample param sets — one full {param_name: observed_value} dict
-    # per occurrence (up to 5 distinct). Live-validation feeds these
-    # back into the macro to dry-run it without the operator having
-    # to invent values. Without this field, live_validate has nothing
-    # to plug into ${slot}s.
+    # per occurrence (up to 5 distinct). Each example is anchored to
+    # the URL template the source run was on, so auto-invoke can
+    # pick the credentials matching the live page (a multi-site
+    # login macro mined from herokuapp+saucedemo gets saucedemo
+    # creds when triggered on saucedemo, not "first-wins" guesswork).
     examples: list[dict] = []
-    for occ in occurrences[:5]:
+    for occ in occurrences[:10]:
         trace = traces[occ.seq_id]
         seq = sequences[occ.seq_id]
         sample: dict = {}
@@ -258,8 +259,20 @@ def _meta_dict(
             if real_step is None or p.arg_idx >= len(real_step.args):
                 continue
             sample[nm] = real_step.args[p.arg_idx]
-        if sample and sample not in examples:
-            examples.append(sample)
+        if not sample:
+            continue
+        # Anchor to the URL template the occurrence's first step was on.
+        first_step = next(
+            (s for s in trace.steps
+             if s.step_no == seq[occ.start_idx].step_no),
+            None,
+        ) if occ.start_idx < len(seq) else None
+        url_template = ""
+        if first_step is not None and first_step.pre_signature:
+            url_template = first_step.pre_signature.get("url_template") or ""
+        ex_entry = {"url_template": url_template, "params": sample}
+        if ex_entry not in examples:
+            examples.append(ex_entry)
 
     return {
         "name": name,

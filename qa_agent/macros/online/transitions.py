@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .actions import act_disable, act_on_action, act_start
+from .actions import act_disable, act_on_action, act_page_ready, act_start
 from .states import MacroEvent, MacroState
 
 
@@ -31,6 +31,7 @@ MACRO_TRANSITIONS: dict[MacroState, dict[MacroEvent, Entry]] = {
     },
     MacroState.SCANNING: {
         MacroEvent.ACTION_SEEN: (act_on_action, MacroState.SCANNING, MacroState.SCANNING),
+        MacroEvent.PAGE_READY: (act_page_ready, MacroState.SCANNING, MacroState.SCANNING),
         MacroEvent.DISABLE: (act_disable, MacroState.DISABLED, MacroState.DISABLED),
     },
     MacroState.DISABLED: {},

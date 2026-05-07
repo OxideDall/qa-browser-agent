@@ -34,4 +34,5 @@ class MacroState(Enum):
 class MacroEvent(Enum):
     STARTED = "STARTED"
     ACTION_SEEN = "ACTION_SEEN"
+    PAGE_READY = "PAGE_READY"
     DISABLE = "DISABLE"

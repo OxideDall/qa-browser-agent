@@ -31,24 +31,38 @@ def make_macro_bridge(
     macro_ctx: MacroCtx,
     parent_ctx: Any,
 ) -> Callable[[Any, Any, Any], None]:
-    """Return a listener compatible with FSM.on_transition. Closes
-    over the MacroFSM's send + ctx so it can stash the vocab token
-    on the child ctx before triggering ACTION_SEEN."""
+    """Return a listener compatible with FSM.on_transition.
+
+    Two parent triggers, one event each (R2 — single send per source):
+
+    1. SNAPSHOTTING → THINKING on event SNAPSHOT_READY
+       Page just got a fresh snapshot, LLM is about to think.
+       Fires `PAGE_READY` so the detector can pre-empt the LLM
+       with a precondition-matched macro before `act_think` runs.
+       Cheaper than action-driven matching: replaces full chunks
+       of LLM turns instead of confirming after the fact.
+
+    2. THINKING → DISPATCHING on event LLM_REPLIED
+       LLM emitted an action; act_classify ran. Fires `ACTION_SEEN`
+       so the action-stream Aho-Corasick can advance and detect
+       co-occurring patterns mid-run. Useful for suggesting macros
+       to the agent for the *rest* of the current run.
+    """
     def _listener(from_state: Any, to_state: Any, event: Any) -> None:
-        # Single-purpose proxy: only react to act_classify completion.
-        if event is not AgentEvent.LLM_REPLIED:
+        # Page-driven pre-emption — fires just before `act_think`.
+        if (event is AgentEvent.SNAPSHOT_READY
+                and to_state is AgentState.THINKING):
+            macro_send(MacroEvent.PAGE_READY)
             return
-        if to_state is not AgentState.DISPATCHING:
+
+        # Action-stream detection — fires just after `act_classify`.
+        if (event is AgentEvent.LLM_REPLIED
+                and to_state is AgentState.DISPATCHING):
+            tok = vocab_from_agent_ctx(parent_ctx)
+            if tok is None:
+                return
+            macro_ctx.pending_event_data = tok
+            macro_send(MacroEvent.ACTION_SEEN)
             return
-        tok = vocab_from_agent_ctx(parent_ctx)
-        if tok is None:
-            # Non-mineable verb (look / screenshot / done / tab / macro
-            # / parse-error / unknown). Skip without telling the FSM —
-            # we're a proxy, not a state-keeping actor.
-            return
-        # Stash the vocab token where the action will pick it up,
-        # then fire the single event. Per R2: data-not-decisions.
-        macro_ctx.pending_event_data = tok
-        macro_send(MacroEvent.ACTION_SEEN)
 
     return _listener

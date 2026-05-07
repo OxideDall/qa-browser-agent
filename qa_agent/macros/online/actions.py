@@ -39,10 +39,46 @@ def _has_pending_auto(ctx: MacroCtx) -> bool:
     return bool(getattr(ctx.parent_ctx, "macro_auto_action", None))
 
 
-def _params_from_examples(macro) -> dict:
-    """First example from meta.examples (mined macros have these).
-    Empty dict if none — caller may decide to skip auto-invoke."""
+def _params_from_examples(macro, parent_ctx=None) -> dict:
+    """Pick a sample param dict from meta.examples, ideally matching
+    the current page's URL template — multi-site macros otherwise
+    use the wrong credentials.
+
+    Two example-shape conventions tolerated:
+      * New: `{"url_template": "...", "params": {...}}` — anchored.
+      * Old: `{"key": "value", ...}` — flat dict, treat as
+        url-anchorless. Falls back to first non-empty.
+
+    Returns empty dict if no usable example found; caller may decide
+    to skip auto-invoke.
+    """
     examples = list(macro.meta.get("examples") or [])
+    if not examples:
+        return {}
+
+    # Determine current page url_template (if parent_ctx supplied).
+    cur_template = ""
+    if parent_ctx is not None:
+        snapshot = getattr(parent_ctx, "snapshot", None)
+        if isinstance(snapshot, dict):
+            sig = snapshot.get("signature")
+            if isinstance(sig, dict):
+                cur_template = sig.get("url_template", "") or ""
+
+    # Phase 1: prefer anchored example whose url_template matches.
+    for ex in examples:
+        if not isinstance(ex, dict):
+            continue
+        if "params" in ex and "url_template" in ex:
+            if cur_template and ex.get("url_template") == cur_template:
+                return dict(ex.get("params") or {})
+
+    # Phase 2: any anchored example (no template match — first wins).
+    for ex in examples:
+        if isinstance(ex, dict) and "params" in ex:
+            return dict(ex.get("params") or {})
+
+    # Phase 3: legacy flat-dict examples.
     for ex in examples:
         if isinstance(ex, dict) and ex:
             return dict(ex)
@@ -137,7 +173,7 @@ def act_on_action(ctx: MacroCtx) -> None:
         if ctx.mode == "auto":
             if _has_pending_auto(ctx):
                 continue
-            params = _params_from_examples(macro)
+            params = _params_from_examples(macro, parent_ctx)
             if not params and any(p.required for p in macro.params):
                 # Auto-invoke can't synthesise required params without
                 # examples — fall back to a suggestion this turn.
@@ -155,6 +191,67 @@ def act_on_action(ctx: MacroCtx) -> None:
             })
         else:
             _inject_suggestion(ctx, macro, match)
+
+
+def act_page_ready(ctx: MacroCtx) -> None:
+    """PAGE_READY: parent's snapshot is fresh and the LLM is about to
+    think. Scan installed macros' preconditions against the current
+    page signature; the first macro whose URL template matches is a
+    pre-emption candidate.
+
+    Pre-emption fires BEFORE the LLM call, so an auto-invoke replaces
+    a full chunk of LLM turns (login takes 3-4 turns; matching macro
+    cuts those entirely). Suggest mode injects a hint into the next
+    user message via parent_ctx.pending_diag.
+
+    Cooldown is shared with action-driven detection — same macro
+    can't fire twice within `cooldown_steps` regardless of which
+    bridge originated the trigger.
+    """
+    parent_ctx = ctx.parent_ctx
+    parent_step = int(getattr(parent_ctx, "step", 0) or 0)
+
+    # Already a queued auto-invoke? Don't pile a second on top —
+    # let the agent consume the first.
+    if _has_pending_auto(ctx):
+        return
+
+    # Find first eligible macro: precondition match + cooldown clean.
+    for macro in ctx.macros.values():
+        if not _precondition_ok(macro, parent_ctx):
+            continue
+        last = ctx.last_triggered.get(macro.name, -10**9)
+        if parent_step - last < ctx.cooldown_steps:
+            continue
+        ctx.last_triggered[macro.name] = parent_step
+        ctx.n_matches += 1
+
+        if ctx.mode == "auto":
+            params = _params_from_examples(macro, parent_ctx)
+            if not params and any(p.required for p in macro.params):
+                _inject_suggestion(ctx, macro, _PageMatch(macro.name, len(macro.pattern)))
+                return
+            call = _format_macro_call(macro.name, params)
+            parent_ctx.macro_auto_action = call
+            ctx.n_auto_invocations += 1
+            ctx.log.append({
+                "ts": time.time(),
+                "step": parent_step,
+                "macro": macro.name,
+                "event": "page_auto_invoke",
+                "call": call,
+            })
+        else:
+            _inject_suggestion(ctx, macro, _PageMatch(macro.name, len(macro.pattern)))
+        return  # one pre-emption per page is enough
+
+
+class _PageMatch:
+    """Adapter so `_inject_suggestion` (which expects an Aho-Corasick
+    match object) accepts a page-driven trigger uniformly."""
+    def __init__(self, macro_name: str, pattern_len: int):
+        self.macro_name = macro_name
+        self.pattern_len = pattern_len
 
 
 def act_disable(ctx: MacroCtx) -> None:
