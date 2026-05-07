@@ -220,7 +220,7 @@ def _phase_mine(
     macros_out: Path,
     use_llm: bool = True,
     min_support: int = 2,
-    min_len: int = 3,
+    min_len: int = 2,
     max_len: int = 12,
 ) -> list[MineRecord]:
     """Run the miner programmatically over the bench captures."""
@@ -230,7 +230,12 @@ def _phase_mine(
     )
     from qa_agent.macros.miner.mining import filter_redundant
 
-    traces = load_captures(captures_dir)
+    # G3: lower min_segment_len to 1 so single-step page segments
+    # (where the agent did exactly one action before navigating)
+    # contribute to mining. Combined with min_len=2 these produce
+    # 2-step atomic macros that cover many more fixtures' main
+    # action than the 3-step minimum did.
+    traces = load_captures(captures_dir, min_segment_len=1)
     seqs = [extract_vocab(t) for t in traces]
     nonempty = [(t, s) for t, s in zip(traces, seqs) if s]
     if not nonempty:
