@@ -83,17 +83,25 @@ def _render_step(
     params: list[ParamCandidate],
     param_names: dict[tuple[int, int], str],
     target_names: dict[int, str],
+    nth_index: dict[int, int],
+    repeated_keys: set[tuple[str, str]],
 ) -> str:
     """Produce one tagged-DSL line for one pattern step.
 
-    `target_names` maps step_idx → consistent accessible name across
-    all occurrences (only present if every occurrence's TraceStep
-    recorded the same `target_name`). When present, click/hover
-    selectors get baked-in role+name (`click button "Submit"`),
-    significantly more robust against live-replay drift than role-only.
+    Selector resolution priority:
+      1. `target_names[step_idx]` — bake the accessible name when
+         every source occurrence agreed on it.
+      2. nth-indexed role when this (verb, role) pair appears more
+         than once in the pattern: `textbox:0` for the first
+         occurrence, `textbox:1` for the second, etc. Disambiguates
+         repeated form fields (login: username + password textboxes).
+      3. Plain role.
     """
     verb = pattern_item.verb
     role = pattern_item.classifier
+    key = (verb, role)
+    nth = nth_index.get(step_idx, 0)
+    role_with_nth = f"{role}:{nth}" if key in repeated_keys else role
 
     # max_arity from concrete + params at this step
     arity = max(
@@ -119,7 +127,7 @@ def _render_step(
         name = target_names.get(step_idx)
         if name:
             return f"{verb} {role} {_shell_quote(name)}"
-        return f"{verb} {role}"
+        return f"{verb} {role_with_nth}"
     if verb == "select":
         # Same: drop the ID arg. Tagged DSL doesn't support `select`
         # natively today (it isn't in the verb table); skip with comment.
@@ -128,7 +136,14 @@ def _render_step(
         # Captured args were [id, text]. id at arg 0 is meaningless for
         # replay; the text is the parameter / concrete value.
         text_arg = args_rendered[1] if len(args_rendered) > 1 else _shell_quote("")
-        return f"type {role} {text_arg}"
+        name = target_names.get(step_idx)
+        if name:
+            # Best: accessible name baked (form has labelled inputs).
+            return f"type {role} {_shell_quote(name)} {text_arg}"
+        # Fallback: nth-indexed role when (verb, role) repeats in pattern,
+        # plain role otherwise. Without nth, two `type textbox` steps
+        # both hit the first textbox and overwrite each other.
+        return f"type {role_with_nth} {text_arg}"
     if verb == "select":
         opt = args_rendered[1] if len(args_rendered) > 1 else _shell_quote("")
         # Tagged DSL doesn't have a `select` action — emit a click+expect
@@ -329,6 +344,21 @@ def emit(
     target_dir = output_root / curated.name
     target_dir.mkdir(parents=True, exist_ok=True)
 
+    # Pre-compute nth-indexed roles for repeated (verb, role) patterns.
+    # If a pattern has two `(type, textbox)` steps, role-only selectors
+    # `type textbox` would both target nth(0) — overwriting each
+    # other. Per-step nth indexing differentiates: first becomes
+    # `type textbox:0`, second `type textbox:1`. Used as fallback
+    # when target_name baking isn't available (e.g. cross-site mining
+    # where one site has placeholders and the other doesn't).
+    role_seen_count: dict[tuple[str, str], int] = {}
+    nth_index: dict[int, int] = {}
+    for step_idx, item in enumerate(curated.pattern):
+        key = (item.verb, item.classifier)
+        nth_index[step_idx] = role_seen_count.get(key, 0)
+        role_seen_count[key] = role_seen_count.get(key, 0) + 1
+    repeated_keys = {k for k, v in role_seen_count.items() if v > 1}
+
     # Pre-compute consistent target accessible names per pattern step.
     # Only steps where EVERY occurrence's TraceStep recorded the same
     # non-empty target_name end up in the map; those will get baked
@@ -368,6 +398,8 @@ def emit(
             curated.slots.concrete, curated.slots.params,
             curated.param_names,
             target_names,
+            nth_index,
+            repeated_keys,
         )
         body_lines.append(line)
 

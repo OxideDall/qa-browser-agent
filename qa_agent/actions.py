@@ -25,7 +25,7 @@ def parse_action(response_text: str) -> tuple[str, list[str]]:
         if candidate and candidate.split()[0] in (
             "click", "type", "select", "hover", "scroll",
             "goto", "wait", "done", "screenshot", "look", "tab", "press",
-            "evaluate",
+            "evaluate", "macro",
         ):
             line = candidate
             break
@@ -93,6 +93,17 @@ def parse_action(response_text: str) -> tuple[str, list[str]]:
         if not expr:
             return ("error", ["evaluate: empty expression"])
         return ("evaluate", [expr])
+    if cmd == "macro":
+        # macro <name> [k=v] [k=v] ...  First token is the macro name,
+        # rest are key=value param pairs (shell-style).
+        import shlex
+        try:
+            tokens = shlex.split(rest, posix=True)
+        except ValueError as e:
+            return ("error", [f"macro: shlex error: {e}"])
+        if not tokens:
+            return ("error", ["macro: missing name"])
+        return ("macro", tokens)
     if cmd == "press":
         key = rest.strip()
         # Normalize common variants
@@ -110,6 +121,67 @@ def parse_action(response_text: str) -> tuple[str, list[str]]:
         key = alias.get(key.lower(), key)
         return ("press", [key])
     return ("error", [f"Unknown action: {cmd}"])
+
+
+def _execute_macro(page: Page, args: list[str]) -> str:
+    """LLM-path execution of `macro <name> k=v ...`.
+
+    Loads the named macro from the installed library, substitutes
+    params, parses the resulting tagged DSL, runs each sub-step on
+    the live `page`. Returns a one-line human summary that the
+    runtime feeds back into the conversation so the LLM knows what
+    just happened (post-macro context — without this, the agent
+    sees the post-macro page state with no idea a macro just ran).
+    """
+    name = args[0]
+    params: dict[str, str] = {}
+    for tok in args[1:]:
+        if "=" in tok:
+            k, _, v = tok.partition("=")
+            params[k] = v
+
+    try:
+        from .macros import compile_macro, load_macro
+        from .tagged import execute_step, parse_tagged
+    except Exception as e:
+        return f"ERROR: macro module unavailable: {type(e).__name__}: {e}"
+
+    try:
+        macro = load_macro(name)
+    except Exception as e:
+        return f"ERROR: macro {name!r}: {type(e).__name__}: {e}"
+
+    try:
+        body = compile_macro(macro, params)
+    except Exception as e:
+        return f"ERROR: macro {name!r} compile: {type(e).__name__}: {e}"
+
+    try:
+        steps = parse_tagged(body)
+    except Exception as e:
+        return f"ERROR: macro {name!r} parse: {type(e).__name__}: {e}"
+
+    n_pass = 0
+    failed_at: int | None = None
+    failed_msg = ""
+    for i, step in enumerate(steps, start=1):
+        res = execute_step(page, step)
+        if res.status == "PASS":
+            n_pass += 1
+        else:
+            failed_at = i
+            failed_msg = res.message[:200]
+            break
+
+    if failed_at is None:
+        return (
+            f"macro {name!r} OK: {n_pass}/{len(steps)} sub-steps "
+            f"completed (params={params!r}). Now on {page.url[:80]!r}."
+        )
+    return (
+        f"macro {name!r} FAILED at sub-step {failed_at}/{len(steps)}: "
+        f"{failed_msg}. Now on {page.url[:80]!r}."
+    )
 
 
 def _execute_evaluate(page: Page, js_expr: str) -> str:
@@ -334,6 +406,8 @@ def execute_action(page: Page, action: str, args: list[str],
             return f"Waited {ms}ms"
         if action == "evaluate":
             return _execute_evaluate(page, args[0])
+        if action == "macro":
+            return _execute_macro(page, args)
         if action == "screenshot":
             SCREENSHOT_DIR.mkdir(exist_ok=True)
             ts = datetime.now().strftime("%Y%m%d_%H%M%S")

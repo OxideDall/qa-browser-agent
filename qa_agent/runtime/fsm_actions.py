@@ -1035,6 +1035,13 @@ def act_exec(ctx: AgentCtx) -> None:
         ("eval -> ", "EVAL_ERROR:", "EVAL_THROW:")
     ):
         ctx.messages.append({"role": "user", "content": result})
+    # `macro` results similarly — without this, the agent sees the
+    # post-macro page state cold and can't correlate it to the macro
+    # that just ran. Critical for auto-invocation: agent needs to
+    # know "login_with_credentials just completed, you're on inventory"
+    # to skip redoing the login.
+    elif ctx.action == "macro":
+        ctx.messages.append({"role": "user", "content": result})
 
     _emit_step(ctx)
     ctx.send_event(AgentEvent.START)   # advance to the next step

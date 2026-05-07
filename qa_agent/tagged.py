@@ -229,6 +229,14 @@ def resolve_selector(page: Page, sel: str):
     if not sel:
         raise ValueError("empty selector")
 
+    # role:nth — `textbox:0`, `button:2`. nth-indexed role selector
+    # for cases where two same-role elements need to be addressed
+    # without accessible names (login forms with placeholderless
+    # `<input>` username/password fields are the canonical case).
+    m_nth = re.match(r'^([a-z]+):(\d+)\s*$', sel)
+    if m_nth and m_nth.group(1) in _ROLES:
+        return page.get_by_role(m_nth.group(1)).nth(int(m_nth.group(2)))
+
     # role: `button "name"`, `dialog`, `tab "Activity"`. Role optionally
     # followed by a quoted accessible name. shlex already stripped the
     # quotes — args[0] would be just `button` here, with the name in
@@ -272,6 +280,11 @@ def _resolve_selector_args(args: list[str], page: Page):
     if not args:
         raise ValueError("missing selector")
     head = args[0]
+    # role:nth form — single token, role-only with positional index.
+    m_nth = re.match(r'^([a-z]+):(\d+)$', head)
+    if m_nth and m_nth.group(1) in _ROLES:
+        loc = page.get_by_role(m_nth.group(1)).nth(int(m_nth.group(2)))
+        return loc, 1
     # role + optional quoted name (shlex consumed quotes; if the second
     # token would otherwise look like an operator, callers must pass
     # the name explicitly via `text:`).
