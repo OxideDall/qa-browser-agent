@@ -101,7 +101,8 @@ class ValidateRecord:
 class BenchOutput:
     fixture_ids: list[str] = field(default_factory=list)
     warmup: list[RunRecord] = field(default_factory=list)
-    post_install: list[RunRecord] = field(default_factory=list)
+    post_install_suggest: list[RunRecord] = field(default_factory=list)
+    post_install_auto: list[RunRecord] = field(default_factory=list)
     mining: list[MineRecord] = field(default_factory=list)
     validation: list[ValidateRecord] = field(default_factory=list)
     captures_dir: str = ""
@@ -168,14 +169,24 @@ def _phase_runs(
     fixture_ids: list[str], n: int, phase: str,
     macros_root: Path | None,
     captures_dir: Path,
+    auto_mode: bool = False,
 ) -> list[RunRecord]:
-    """Run each fixture `n` times, return per-run records."""
+    """Run each fixture `n` times, return per-run records.
+
+    `auto_mode` toggles QA_AUTO_MACRO=1 so the online detector
+    auto-invokes matched macros instead of suggesting. Use to measure
+    real token deltas — suggest mode never reduces tokens by design.
+    """
     # Scope env vars BEFORE importing qa_agent so capture paths resolve right.
     os.environ["QA_CAPTURES_DIR"] = str(captures_dir)
     if macros_root is not None:
         os.environ["QA_MACROS_DIR"] = str(macros_root)
     elif "QA_MACROS_DIR" in os.environ:
         del os.environ["QA_MACROS_DIR"]
+    if auto_mode:
+        os.environ["QA_AUTO_MACRO"] = "1"
+    elif "QA_AUTO_MACRO" in os.environ:
+        del os.environ["QA_AUTO_MACRO"]
 
     # qa_agent reads env vars at runtime (CAPTURES_DIR / MACROS_DIR
     # are function-resolved per-call, not module-level constants), so
@@ -355,7 +366,7 @@ def _write_report(out_path: Path, b: BenchOutput) -> None:
     lines.append("")
     lines.append(f"- Fixtures: {len(b.fixture_ids)} (`{', '.join(b.fixture_ids)}`)")
     lines.append(f"- Warmup runs: {len(b.warmup)} ({len(b.warmup) // max(1, len(b.fixture_ids))} per fixture)")
-    lines.append(f"- Post-install runs: {len(b.post_install)}")
+    lines.append(f"- Post-install runs: {len(b.post_install_suggest)} suggest + {len(b.post_install_auto)} auto")
     lines.append(f"- Mining yield: {len(b.mining)} candidates emitted")
     lines.append(f"- Live-validate verdict: {sum(1 for v in b.validation if v.passed)} kept / {sum(1 for v in b.validation if not v.passed)} dropped")
     lines.append(f"- Wallclock: {b.finished_at - b.started_at:.1f}s")
@@ -477,63 +488,88 @@ def _write_report(out_path: Path, b: BenchOutput) -> None:
         lines.append("_(no validation rows)_\n")
     lines.append("")
 
-    # --- Detection coverage ---
-    lines.append("## Detection coverage (post-install runs)")
-    lines.append("")
-    if b.post_install:
-        rows = []
-        for r in b.post_install:
-            rows.append({
-                "fixture": r.fixture_id,
-                "loaded": r.n_macros_loaded,
-                "matches": r.n_macro_matches,
-                "suggestions": r.n_macro_suggestions,
-                "auto_invokes": r.n_macro_auto,
-                "assert_ok": "✓" if r.assert_ok else "✗",
-                "tok_in": r.tokens_in,
-                "tok_out": r.tokens_out,
-            })
-        lines.append(_md_table(rows, [
-            ("fixture", "fixture"),
-            ("loaded", "loaded"),
-            ("matches", "matches"),
-            ("suggestions", "suggestions"),
-            ("auto_invokes", "auto_invokes"),
-            ("assert_ok", "assert_ok"),
-            ("tok_in", "tok_in"),
-            ("tok_out", "tok_out"),
-        ]))
-    else:
-        lines.append("_(no post-install data)_\n")
-    lines.append("")
+    # --- Detection coverage (split by mode) ---
+    for label, runs in [
+        ("Detection coverage — suggest mode", b.post_install_suggest),
+        ("Detection coverage — auto mode", b.post_install_auto),
+    ]:
+        lines.append(f"## {label}")
+        lines.append("")
+        if runs:
+            rows = []
+            for r in runs:
+                rows.append({
+                    "fixture": r.fixture_id,
+                    "loaded": r.n_macros_loaded,
+                    "matches": r.n_macro_matches,
+                    "suggestions": r.n_macro_suggestions,
+                    "auto_invokes": r.n_macro_auto,
+                    "assert_ok": "✓" if r.assert_ok else "✗",
+                    "tok_in": r.tokens_in,
+                    "tok_out": r.tokens_out,
+                    "elapsed_s": r.elapsed_s,
+                })
+            lines.append(_md_table(rows, [
+                ("fixture", "fixture"),
+                ("loaded", "loaded"),
+                ("matches", "matches"),
+                ("suggestions", "suggestions"),
+                ("auto_invokes", "auto_invokes"),
+                ("assert_ok", "assert_ok"),
+                ("tok_in", "tok_in"),
+                ("tok_out", "tok_out"),
+                ("wall (s)", "elapsed_s"),
+            ]))
+        else:
+            lines.append("_(no data)_\n")
+        lines.append("")
 
-    # --- Token deltas ---
-    lines.append("## Token deltas — warmup vs post-install")
+    # --- Token deltas: warmup vs each post-install mode ---
+    lines.append("## Token deltas — warmup vs post-install (suggest, auto)")
     lines.append("")
     rows = []
     for fid in b.fixture_ids:
         warm = [r for r in b.warmup if r.fixture_id == fid]
-        post = [r for r in b.post_install if r.fixture_id == fid]
+        sug = [r for r in b.post_install_suggest if r.fixture_id == fid]
+        auto = [r for r in b.post_install_auto if r.fixture_id == fid]
         warm_in = int(_safe_mean([r.tokens_in for r in warm])) if warm else 0
-        post_in = int(_safe_mean([r.tokens_in for r in post])) if post else 0
+        sug_in = int(_safe_mean([r.tokens_in for r in sug])) if sug else 0
+        auto_in = int(_safe_mean([r.tokens_in for r in auto])) if auto else 0
+        def _pct(post: int) -> str:
+            return f"{(post - warm_in) * 100 / warm_in:+.1f}%" if warm_in else "-"
         rows.append({
             "fixture": fid,
             "warmup_in̄": warm_in,
-            "post_in̄": post_in,
-            "delta": post_in - warm_in,
-            "delta_%": (
-                f"{(post_in - warm_in) * 100 / warm_in:+.1f}%"
-                if warm_in else "-"
-            ),
+            "suggest_in̄": sug_in,
+            "suggest_Δ%": _pct(sug_in),
+            "auto_in̄": auto_in,
+            "auto_Δ%": _pct(auto_in),
         })
     lines.append(_md_table(rows, [
         ("fixture", "fixture"),
         ("warmup tok_in̄", "warmup_in̄"),
-        ("post-install tok_in̄", "post_in̄"),
-        ("delta", "delta"),
-        ("delta %", "delta_%"),
+        ("suggest tok_in̄", "suggest_in̄"),
+        ("suggest Δ%", "suggest_Δ%"),
+        ("auto tok_in̄", "auto_in̄"),
+        ("auto Δ%", "auto_Δ%"),
     ]))
     lines.append("")
+
+    # --- Auto-mode aggregate (token / time savings across run) ---
+    if b.post_install_auto:
+        warm_total_in = sum(r.tokens_in for r in b.warmup)
+        warm_n = len(b.warmup)
+        warm_mean = warm_total_in / warm_n if warm_n else 0
+        auto_mean = _safe_mean([r.tokens_in for r in b.post_install_auto])
+        n_auto_invokes_total = sum(r.n_macro_auto for r in b.post_install_auto)
+        lines.append("### Auto-mode aggregate")
+        lines.append("")
+        lines.append(f"- Auto-invocations fired: **{n_auto_invokes_total}** "
+                     f"across {len(b.post_install_auto)} runs")
+        lines.append(f"- Mean tok_in: warmup={warm_mean:.0f} → "
+                     f"auto={auto_mean:.0f} "
+                     f"({(auto_mean - warm_mean) * 100 / warm_mean if warm_mean else 0:+.1f}%)")
+        lines.append("")
 
     # --- Raw JSONL appendix ---
     lines.append("## Raw appendix")
@@ -622,9 +658,15 @@ def main(argv: list[str] | None = None) -> int:
         out.validation = _phase_live_validate(macros_out)
 
     if "detect" not in skip:
-        out.post_install = _phase_runs(
-            fixture_ids, 1, "post_install",
+        out.post_install_suggest = _phase_runs(
+            fixture_ids, 1, "post_install_suggest",
             macros_root=macros_out, captures_dir=captures_dir,
+            auto_mode=False,
+        )
+        out.post_install_auto = _phase_runs(
+            fixture_ids, 1, "post_install_auto",
+            macros_root=macros_out, captures_dir=captures_dir,
+            auto_mode=True,
         )
 
     out.finished_at = time.time()
