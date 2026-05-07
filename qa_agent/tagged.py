@@ -359,12 +359,20 @@ def _h_click(page: Page, step: Step, res: StepResult) -> None:
 
 
 def _h_type(page: Page, step: Step, res: StepResult) -> None:
-    # type <selector> "text" — selector may be 1 or 2 tokens (role + name).
-    loc, consumed = _resolve_selector_args(step.args, page)
-    rest = step.args[consumed:]
-    if not rest:
-        raise ValueError(f"type missing text after selector: {step.args!r}")
-    text = rest[0]
+    # type <selector...> <text>. The LAST arg is the text to type;
+    # everything before it is the selector. This unambiguously
+    # disambiguates `type textbox "tomsmith"` (role-only selector +
+    # text "tomsmith") from `type textbox "Username" "tomsmith"`
+    # (role+name selector + text). Greedy left-to-right consumption
+    # would have stolen the text into the selector and then complained
+    # about a missing text arg.
+    if len(step.args) < 2:
+        raise ValueError(
+            f"type needs at least <selector> <text>, got {step.args!r}"
+        )
+    text = step.args[-1]
+    sel_args = step.args[:-1]
+    loc, _ = _resolve_selector_args(sel_args, page)
     loc.click(timeout=DEFAULT_STEP_TIMEOUT)
     page.keyboard.press("Control+a")
     page.keyboard.press("Delete")

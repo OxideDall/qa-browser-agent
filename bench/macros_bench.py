@@ -258,6 +258,8 @@ def _phase_mine(
         if not v.passed:
             continue
         path = emit(cur, ng.occurrences, traces, seqs, macros_out)
+        if path is None:
+            continue
         seen_names.add(cur.name)
         out.append(MineRecord(
             name=cur.name,

@@ -311,14 +311,53 @@ _ACTION_TO_EVENT = {
 }
 
 
+def _aria_role_from_el(el: dict) -> str:
+    """Resolve the ARIA-role we should classify the element as.
+
+    Priority: explicit ARIA role attribute > HTML-tag mapping > raw tag.
+    Mapping is the conservative subset Playwright's get_by_role accepts:
+    `<input type=text>` is `textbox`, `<input type=submit>` is `button`,
+    `<select>` is `combobox`, `<a>` is `link`, etc. Without this map
+    the miner emits role classifiers like `input` that Playwright
+    doesn't recognise — the resulting `click input "name"` selector
+    falls through to a CSS-locator interpretation of `input "name"`
+    which is malformed and times out at replay.
+    """
+    role = el.get("role")
+    if role:
+        return str(role)
+    tag = el.get("tag") or "?"
+    if tag == "input":
+        t = str(el.get("type") or "text").lower()
+        if t in ("submit", "button", "image", "reset"):
+            return "button"
+        if t == "checkbox":
+            return "checkbox"
+        if t == "radio":
+            return "radio"
+        # text / email / password / search / tel / url / number etc.
+        return "textbox"
+    if tag == "textarea":
+        return "textbox"
+    if tag == "select":
+        return "combobox"
+    if tag == "a":
+        return "link"
+    return tag
+
+
 def _populate_target_role(ctx: AgentCtx) -> None:
-    """Resolve the target element's role for verbs that act on a snapshot
-    id, and stamp it on the current step_record. Called from BOTH
-    act_classify (LLM-direct path) and _run_vision (post-`look` path),
-    so vision-generated actions get the same vocabulary annotation —
-    without it, miner sees `type:_` for vision steps and `type:input`
-    for direct steps and treats them as different tokens, corrupting
-    n-gram alignment.
+    """Resolve the target element's role + accessible name for verbs
+    that act on a snapshot id, and stamp them on the current
+    step_record. Called from BOTH act_classify (LLM-direct path) and
+    _run_vision (post-`look` path), so vision-generated actions get
+    the same vocabulary annotation.
+
+    `target_role` feeds the miner vocabulary (alphabet for n-gram
+    matching). `target_name` feeds the emit-time selector strategy:
+    when every occurrence of a click step targeted the same accessible
+    name, emit can produce `click button "name"` instead of role-only
+    — significantly more stable against live-replay drift.
     """
     action, args = ctx.action, ctx.args
     if action not in ("click", "type", "select", "hover") or not args:
@@ -329,9 +368,16 @@ def _populate_target_role(ctx: AgentCtx) -> None:
         return
     for el in (ctx.snapshot or {}).get("elements") or []:
         if el.get("id") == eid:
-            ctx.step_record["target_role"] = (
-                el.get("role") or el.get("tag") or "?"
+            ctx.step_record["target_role"] = _aria_role_from_el(el)
+            # Accessible name candidates, in priority order: visible
+            # text > aria-label > placeholder. Truncated to 80 chars
+            # so a giant nav element's concatenated text doesn't end
+            # up as a baked-in selector.
+            name = (
+                el.get("text") or el.get("aria-label") or el.get("ph") or ""
             )
+            if name:
+                ctx.step_record["target_name"] = str(name)[:80]
             return
 
 

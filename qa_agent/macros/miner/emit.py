@@ -51,17 +51,29 @@ def _arg_for_step(
     params: list[ParamCandidate],
     param_names: dict[tuple[int, int], str],
 ) -> str:
-    """Resolve the rendered arg at this position: ${param} or
-    quoted concrete value."""
+    """Resolve the rendered arg at this position: quoted ${param} or
+    quoted concrete value.
+
+    Param refs are wrapped in double quotes so that compile_macro's
+    string.Template substitution lands inside the shlex-quoted form.
+    Without quoting, `type textbox ${username}` post-substitution
+    becomes `type textbox tomsmith` and tagged-DSL's parser thinks
+    `tomsmith` is the role's accessible-name selector arg, not the
+    text to type — runtime parse error. Wrapping yields
+    `type textbox "${username}"` → `type textbox "tomsmith"` →
+    shlex strips quotes → ['type', 'textbox', 'tomsmith'] as
+    intended. Numeric / URL substitutions also tolerate the quoting
+    (shlex strips, downstream parsers re-coerce).
+    """
     key = (step_idx, arg_idx)
     if key in param_names:
-        return "${" + param_names[key] + "}"
+        return '"${' + param_names[key] + '}"'
     for c in concrete:
         if c.step_idx == step_idx and c.arg_idx == arg_idx:
             return _shell_quote(c.value)
     # Inference saw nothing at this slot; treat as required param
     # (shouldn't happen unless source traces were inconsistent).
-    return "${" + f"param_{step_idx}_{arg_idx}" + "}"
+    return '"${' + f"param_{step_idx}_{arg_idx}" + '}"'
 
 
 def _render_step(
@@ -70,8 +82,16 @@ def _render_step(
     concrete: list[ConcreteArgs],
     params: list[ParamCandidate],
     param_names: dict[tuple[int, int], str],
+    target_names: dict[int, str],
 ) -> str:
-    """Produce one tagged-DSL line for one pattern step."""
+    """Produce one tagged-DSL line for one pattern step.
+
+    `target_names` maps step_idx → consistent accessible name across
+    all occurrences (only present if every occurrence's TraceStep
+    recorded the same `target_name`). When present, click/hover
+    selectors get baked-in role+name (`click button "Submit"`),
+    significantly more robust against live-replay drift than role-only.
+    """
     verb = pattern_item.verb
     role = pattern_item.classifier
 
@@ -96,6 +116,9 @@ def _render_step(
     # (it's just "which row of the catalog this run clicked") because
     # we have no way to tie it to anything human-meaningful.
     if verb in ("click", "hover"):
+        name = target_names.get(step_idx)
+        if name:
+            return f"{verb} {role} {_shell_quote(name)}"
         return f"{verb} {role}"
     if verb == "select":
         # Same: drop the ID arg. Tagged DSL doesn't support `select`
@@ -262,11 +285,18 @@ def emit(
     traces: list[Trace],
     sequences: list,
     output_root: Path,
-) -> Path:
-    """Write the macro to disk. Returns the macro directory path.
+) -> Path | None:
+    """Write the macro to disk. Returns the macro directory path,
+    or None if the emit's self-check rejected the body.
 
     `sequences[i]` aligns with `traces[i]` — required so meta.examples
     can attach concrete sample param values per observed run.
+
+    Self-check: after building the tagged body, compile_macro is run
+    against the first emitted example (or empty params if no examples)
+    and parse_tagged is run on the result. If either raises, the macro
+    isn't written — silent broken emit corrupts the catalog and
+    surfaces only at live-validate time (expensive).
 
     Refuses to overwrite an existing macro of the same name with a
     different version — caller must bump version explicitly. Same
@@ -286,6 +316,34 @@ def emit(
     target_dir = output_root / curated.name
     target_dir.mkdir(parents=True, exist_ok=True)
 
+    # Pre-compute consistent target accessible names per pattern step.
+    # Only steps where EVERY occurrence's TraceStep recorded the same
+    # non-empty target_name end up in the map; those will get baked
+    # into the rendered selector. Mismatch / partial coverage → role-only.
+    target_names: dict[int, str] = {}
+    n = len(curated.pattern)
+    for step_idx in range(n):
+        observed: set[str] = set()
+        complete = True
+        for occ in occurrences:
+            seq = sequences[occ.seq_id]
+            trace = traces[occ.seq_id]
+            if occ.start_idx + step_idx >= len(seq):
+                complete = False
+                break
+            vocab_item = seq[occ.start_idx + step_idx]
+            real_step = next(
+                (s for s in trace.steps if s.step_no == vocab_item.step_no),
+                None,
+            )
+            tn = real_step.target_name if real_step else None
+            if not tn:
+                complete = False
+                break
+            observed.add(tn)
+        if complete and len(observed) == 1:
+            target_names[step_idx] = next(iter(observed))
+
     # Build the body line-by-line.
     body_lines: list[str] = []
     body_lines.append(f"# Auto-mined macro: {curated.name}")
@@ -296,20 +354,71 @@ def emit(
             step_idx, item,
             curated.slots.concrete, curated.slots.params,
             curated.param_names,
+            target_names,
         )
         body_lines.append(line)
 
     body = "\n".join(body_lines) + "\n"
-    (target_dir / "macro.tagged.txt").write_text(body, encoding="utf-8")
-
     meta = _meta_dict(
         curated.name, curated.description,
         curated.slots.params, curated.param_names,
         occurrences, traces, sequences,
         curated.pattern,
     )
+
+    # Self-check: compile body against the first complete example (or
+    # empty params if no examples) and parse the resulting tagged DSL.
+    # Catches LLM-curator non-determinism producing concrete-only bodies
+    # whose tokens collide with selector grammar (`type textbox tomsmith`).
+    if not _self_check(curated, body, meta):
+        return None
+
+    (target_dir / "macro.tagged.txt").write_text(body, encoding="utf-8")
     (target_dir / "meta.json").write_text(
         json.dumps(meta, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
     return target_dir
+
+
+def _self_check(curated: CuratedMacro, body: str, meta: dict) -> bool:
+    """Compile + parse the emitted body. False ⇒ reject (don't write)."""
+    from ..compile import compile_macro
+    from ..library import Macro, ParamSpec
+    from ...tagged import parse_tagged
+
+    # Fabricate a Macro view sufficient for compile_macro.
+    params_specs: list[ParamSpec] = []
+    for p in meta.get("params") or []:
+        try:
+            params_specs.append(ParamSpec(
+                name=p["name"], type=p.get("type", "string"),
+                required=bool(p.get("required", True)),
+                default=p.get("default"),
+            ))
+        except Exception:
+            return False
+
+    examples = list(meta.get("examples") or [])
+    sample = next(
+        (ex for ex in examples
+         if isinstance(ex, dict)
+         and all(s.name in ex for s in params_specs if s.required)),
+        {},
+    )
+    if any(s.required for s in params_specs) and not sample:
+        # Need a concrete example to exercise compile; without one,
+        # we can still try with synthetic placeholder values.
+        sample = {s.name: ("0" if s.type == "int" else "https://example.com/" if s.type == "url" else "X") for s in params_specs}
+
+    macro = Macro(
+        name=curated.name, version=1, description=curated.description,
+        params=params_specs, preconditions=meta.get("preconditions") or {},
+        body=body, meta=meta, path=Path("/dev/null"),
+    )
+    try:
+        compiled = compile_macro(macro, sample)
+        parse_tagged(compiled)
+    except Exception:
+        return False
+    return True

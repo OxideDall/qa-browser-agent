@@ -38,6 +38,7 @@ class TraceStep:
     verb: str                          # the action verb ("click"/"type"/...)
     args: list[str]
     target_role: str | None
+    target_name: str | None            # accessible name of click/type target (if recorded)
     page_url: str | None
     pre_signature: dict | None
     result: str | None
@@ -66,6 +67,7 @@ def _normalise_step(rec: dict) -> TraceStep:
         verb=str(verb),
         args=[str(a) for a in args],
         target_role=rec.get("target_role"),
+        target_name=rec.get("target_name"),
         page_url=rec.get("page_url"),
         pre_signature=rec.get("pre_signature"),
         result=rec.get("result"),

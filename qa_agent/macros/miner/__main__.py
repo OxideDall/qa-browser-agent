@@ -230,6 +230,16 @@ def main(argv: list[str] | None = None) -> int:
         # mine_ngrams preserved the original VocabItem objects (including
         # step_no), so this is already in place — no rebuild needed.
         path = emit(curated, ngram.occurrences, traces, sequences, out_root)
+        if path is None:
+            skipped.append({
+                "name": curated.name, "support": ngram.support,
+                "reason": (
+                    "self-check FAIL: compiled body didn't parse "
+                    "(LLM-curator likely produced a concrete-embed "
+                    "version whose values collide with selector grammar)"
+                ),
+            })
+            continue
 
         if args.live_validate:
             from ..library import load_macro
