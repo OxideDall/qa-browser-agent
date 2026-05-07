@@ -23,20 +23,18 @@ from ..miner.vocabulary import (
 )
 
 
-def _resolve_target_role(args: list[str], snapshot: dict | None) -> str:
-    """For verbs that act on a snapshot id, look the role up so we
-    classify (click, button) the same as the miner did. Falls back
-    to '_' if the id isn't resolvable."""
-    if not args or not snapshot:
-        return "_"
-    try:
-        eid = int(args[0])
-    except (TypeError, ValueError):
-        return "_"
-    elements = snapshot.get("elements") or []
-    for el in elements:
-        if el.get("id") == eid:
-            return str(el.get("role") or el.get("tag") or "_")
+def _resolve_target_role(parent_ctx: Any) -> str:
+    """Return the ARIA-mapped target role for the just-classified
+    action. Single source of truth: `step_record["target_role"]`,
+    which `act_classify` (or `_run_vision`) populated via
+    `_aria_role_from_el` — same mapping the miner uses (textbox /
+    button / link / etc., not raw HTML tags). Falls back to '_'
+    if the step_record didn't get a target_role this turn (older
+    capture format, or non-targeted verb)."""
+    sr = getattr(parent_ctx, "step_record", None) or {}
+    role = sr.get("target_role")
+    if isinstance(role, str) and role:
+        return role
     return "_"
 
 
@@ -48,13 +46,9 @@ def vocab_from_agent_ctx(parent_ctx: Any) -> tuple[str, str] | None:
     if verb not in _MINE_VERBS:
         return None
     args = list(getattr(parent_ctx, "args", []) or [])
-    snapshot = getattr(parent_ctx, "snapshot", None)
 
     if verb in ("click", "type", "select", "hover"):
-        # The agent stores parsed args as [id, ...]. miner.vocabulary
-        # uses target_role from step_record (populated by act_classify);
-        # here we recover the same value from the live snapshot.
-        return (verb, _resolve_target_role(args, snapshot))
+        return (verb, _resolve_target_role(parent_ctx))
     if verb == "press":
         return (verb, _classify_press_key(args[0] if args else ""))
     if verb == "scroll":
@@ -71,7 +65,7 @@ def vocab_from_agent_ctx(parent_ctx: Any) -> tuple[str, str] | None:
         # In the live LLM path the LLM doesn't currently emit these
         # verbs (they're tagged-only). Cover for symmetry — derived
         # patterns and tagged-mode captures both reference them.
-        return (verb, _resolve_target_role(args, snapshot))
+        return (verb, _resolve_target_role(parent_ctx))
     if verb == "expect_text":
         return (verb, "text_assert")
     if verb == "expect_url":

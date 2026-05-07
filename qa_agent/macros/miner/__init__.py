@@ -23,6 +23,7 @@ pass before paying LLM tokens).
 
 from __future__ import annotations
 
+from .boundaries import segment_trace, segment_traces
 from .curator import CuratedMacro, curate
 from .emit import emit
 from .inference import ParamCandidate, infer_params
@@ -45,4 +46,6 @@ __all__ = [
     "curate",
     "validate",
     "emit",
+    "segment_trace",
+    "segment_traces",
 ]

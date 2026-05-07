@@ -132,12 +132,26 @@ def load_captures(
     *,
     include_failed: bool = False,
     include_tagged: bool = False,
+    split_by_page: bool = True,
+    min_segment_len: int = 2,
 ) -> list[Trace]:
     """Load + filter capture traces.
 
-    Default behaviour drops failed runs (a macro mined from FAIL is a
-    macro that fails) and tagged-mode runs (replaying existing
-    tagged scripts is circular). Either flag opts back in.
+    Default behaviour:
+    - drops failed runs (a macro mined from FAIL is a macro that fails)
+    - drops tagged-mode runs (replaying existing tagged scripts is
+      circular)
+    - splits each remaining trace into per-URL-template sub-traces
+      so mining produces within-page N-grams that the runtime
+      precondition gate can actually fire on. Set
+      `split_by_page=False` to mine whole-trace sequences instead
+      (legacy behaviour; produces cross-page malformed candidates
+      that the precondition gate rejects at runtime).
+    - drops sub-traces shorter than `min_segment_len` (default 2)
+      since 1-step segments only produce trivial 1-grams.
+
+    Either of `include_failed` / `include_tagged` opts the
+    corresponding category back in.
     """
     out: list[Trace] = []
     for path in iter_capture_files(captures_dir):
@@ -149,4 +163,10 @@ def load_captures(
         if not include_tagged and trace.mode == "tagged":
             continue
         out.append(trace)
+
+    if split_by_page:
+        # Lazy import: boundaries imports back from this module's
+        # TraceStep type, the lazy form keeps cycles avoidable.
+        from .boundaries import segment_traces
+        out = segment_traces(out, min_segment_len=min_segment_len)
     return out
