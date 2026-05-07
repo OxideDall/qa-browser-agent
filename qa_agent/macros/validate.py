@@ -56,21 +56,38 @@ def _pick_example_params(macro: Macro) -> dict:
     """First entry from meta.examples that covers every required param.
     Falls back to defaults of optional params + best-effort first
     example for required ones. Raises ValueError if a required param
-    has no example value anywhere — caller must supply explicitly."""
+    has no example value anywhere — caller must supply explicitly.
+
+    Tolerates two shapes (matching online/actions._params_from_examples):
+      * Anchored: `{"url_template": "...", "params": {...}}` — current.
+      * Flat:     `{"key": "value", ...}`                   — legacy.
+    """
     examples = list(macro.meta.get("examples") or [])
     required = [p.name for p in macro.params if p.required]
 
+    def _params_of(ex: dict) -> dict:
+        """Extract the inner params dict from either example shape."""
+        if "params" in ex and isinstance(ex.get("params"), dict):
+            return ex["params"]
+        return ex
+
     for ex in examples:
-        if isinstance(ex, dict) and all(name in ex for name in required):
-            return dict(ex)
+        if not isinstance(ex, dict):
+            continue
+        params = _params_of(ex)
+        if all(name in params for name in required):
+            return dict(params)
 
     # No complete example — assemble best-effort from per-key first
     # occurrence in any example, plus optional defaults.
     sample: dict = {}
     for name in required:
         for ex in examples:
-            if isinstance(ex, dict) and name in ex:
-                sample[name] = ex[name]
+            if not isinstance(ex, dict):
+                continue
+            params = _params_of(ex)
+            if name in params:
+                sample[name] = params[name]
                 break
     for p in macro.params:
         if not p.required and p.name not in sample and p.default is not None:
