@@ -126,12 +126,19 @@ def parse_action(response_text: str) -> tuple[str, list[str]]:
 def _execute_macro(page: Page, args: list[str]) -> str:
     """LLM-path execution of `macro <name> k=v ...`.
 
-    Loads the named macro from the installed library, substitutes
-    params, parses the resulting tagged DSL, runs each sub-step on
-    the live `page`. Returns a one-line human summary that the
-    runtime feeds back into the conversation so the LLM knows what
-    just happened (post-macro context — without this, the agent
-    sees the post-macro page state with no idea a macro just ran).
+    Loads the named macro, substitutes params, parses the resulting
+    tagged DSL, runs each sub-step on the live `page`. Returns a
+    one-line human summary that the runtime feeds back into the
+    conversation so the LLM knows what just happened.
+
+    Post-macro state-delta gating (S2): captures page signature
+    before and after sub-steps. If `url_template` AND `struct_hash`
+    both unchanged, the macro "executed" but didn't actually move
+    the page state forward — login form rejected creds, click had
+    no effect, etc. The result string includes the marker
+    `[page-state unchanged]` so the runtime can:
+      - skip the run-lifetime success-lock (allow retry)
+      - inform the LLM that the macro was inert
     """
     name = args[0]
     params: dict[str, str] = {}
@@ -142,7 +149,9 @@ def _execute_macro(page: Page, args: list[str]) -> str:
 
     try:
         from .macros import compile_macro, load_macro
+        from .runtime.page_signature import compute_signature
         from .tagged import execute_step, parse_tagged
+        from .extract import extract_elements
     except Exception as e:
         return f"ERROR: macro module unavailable: {type(e).__name__}: {e}"
 
@@ -161,6 +170,14 @@ def _execute_macro(page: Page, args: list[str]) -> str:
     except Exception as e:
         return f"ERROR: macro {name!r} parse: {type(e).__name__}: {e}"
 
+    # Capture pre-execution signature for state-delta gating.
+    pre_sig: dict | None = None
+    try:
+        elements_pre, _, _, text_pre = extract_elements(page)
+        pre_sig = compute_signature(page.url, elements_pre, text_pre)
+    except Exception:
+        pre_sig = None
+
     n_pass = 0
     failed_at: int | None = None
     failed_msg = ""
@@ -173,14 +190,28 @@ def _execute_macro(page: Page, args: list[str]) -> str:
             failed_msg = res.message[:200]
             break
 
-    if failed_at is None:
+    if failed_at is not None:
         return (
-            f"macro {name!r} OK: {n_pass}/{len(steps)} sub-steps "
-            f"completed (params={params!r}). Now on {page.url[:80]!r}."
+            f"macro {name!r} FAILED at sub-step {failed_at}/{len(steps)}: "
+            f"{failed_msg}. Now on {page.url[:80]!r}."
         )
+
+    # All sub-steps PASS — but did the page actually move?
+    state_marker = ""
+    try:
+        elements_post, _, _, text_post = extract_elements(page)
+        post_sig = compute_signature(page.url, elements_post, text_post)
+        if (pre_sig is not None
+                and pre_sig.get("url_template") == post_sig.get("url_template")
+                and pre_sig.get("struct_hash") == post_sig.get("struct_hash")):
+            state_marker = " [page-state unchanged]"
+    except Exception:
+        pass
+
     return (
-        f"macro {name!r} FAILED at sub-step {failed_at}/{len(steps)}: "
-        f"{failed_msg}. Now on {page.url[:80]!r}."
+        f"macro {name!r} OK: {n_pass}/{len(steps)} sub-steps "
+        f"completed (params={params!r}). "
+        f"Now on {page.url[:80]!r}.{state_marker}"
     )
 
 

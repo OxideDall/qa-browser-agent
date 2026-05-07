@@ -48,6 +48,11 @@ class MacroCtx:
     # Mode: "suggest" (inject user-msg into LLM) or "auto" (forcibly
     # swap the next agent action for a macro invocation).
     mode: str = "suggest"
+    # Below this success_rate threshold a macro is demoted to
+    # suggest-only even when global mode is auto. Protects against
+    # rogue auto-invocations from macros that have proven flaky in
+    # the past. 0.7 = "two out of three previous runs succeeded".
+    auto_min_success_rate: float = 0.7
 
     # Parent reference for inject-back. AgentCtx.pending_diag is the
     # documented channel for "next user message includes this blurb".

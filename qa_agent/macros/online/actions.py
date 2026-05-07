@@ -27,6 +27,7 @@ Both modes record the trigger in ctx.log for the run summary.
 from __future__ import annotations
 
 import json
+import re
 import time
 
 from .ctx import MacroCtx
@@ -48,49 +49,122 @@ def _macro_already_succeeded(ctx: MacroCtx, name: str) -> bool:
     return bool(fired) and name in fired
 
 
+# Param names that the `as <value>` shorthand should bind to.
+_USERNAME_ALIASES = frozenset({"username", "user", "login", "email"})
+
+
+def _task_extracted_params(task: str, expected: set[str]) -> dict[str, str]:
+    """Extract hints for SPECIFIC declared macro param names.
+
+    Only searches for `<name>: <value>` / `<name> = <value>` /
+    `<name> "<value>"` / `'<name>' '<value>'` patterns where `<name>`
+    appears in `expected` (the macro's declared param keys, lowercase).
+
+    Restricting to expected keys avoids picking arbitrary surrounding
+    nouns as param names. E.g. task text "Log in with: username:
+    locked_out_user" would otherwise let a generic regex bind
+    `with: username` first, masking the real `username:` hint.
+
+    The `as <value>` shorthand binds to whichever expected key falls
+    in `_USERNAME_ALIASES`.
+
+    Values: alphanumeric + a few cred-shape symbols, optionally
+    quoted with " or '. Case-insensitive lookup; returned dict
+    preserves original casing.
+    """
+    if not task or not expected:
+        return {}
+    out: dict[str, str] = {}
+    expected_lower = {n.lower(): n for n in expected}
+
+    for name_lc, name_orig in expected_lower.items():
+        m = re.search(
+            rf'\b{re.escape(name_orig)}\s*[:=]\s*[\'"]?'
+            rf'(?P<value>[A-Za-z0-9_!@#$%^&*+.\-]+)[\'"]?',
+            task, re.IGNORECASE,
+        )
+        if m:
+            val = m.group("value").strip()
+            if val.lower() != name_lc:
+                out[name_orig] = val
+
+    # `as <user>` / `as user <foo>` shorthand → username-alias params.
+    m_as = re.search(
+        r'\bas\s+(?:user\s+)?(?P<value>[A-Za-z0-9_]+)',
+        task, re.IGNORECASE,
+    )
+    if m_as:
+        for name_orig in expected:
+            if name_orig.lower() in _USERNAME_ALIASES and name_orig not in out:
+                out[name_orig] = m_as.group("value")
+    return out
+
+
 def _params_from_examples(macro, parent_ctx=None) -> dict:
-    """Pick a sample param dict from meta.examples, ideally matching
-    the current page's URL template — multi-site macros otherwise
-    use the wrong credentials.
+    """Pick a sample param dict from meta.examples — ideally matching
+    BOTH the current page URL template AND any param hints in the
+    task text. Multi-site macros otherwise auto-invoke with the
+    wrong credentials when the task explicitly names a different user.
 
     Two example-shape conventions tolerated:
       * New: `{"url_template": "...", "params": {...}}` — anchored.
-      * Old: `{"key": "value", ...}` — flat dict, treat as
-        url-anchorless. Falls back to first non-empty.
+      * Old: `{"key": "value", ...}` — flat dict, legacy.
 
-    Returns empty dict if no usable example found; caller may decide
-    to skip auto-invoke.
+    Ranking (higher = better):
+      +10 per param hint matched from task text
+      +5  url_template matched
+      +1  url_template empty (anchored example, no contradiction)
+
+    No usable example → empty dict; caller decides to skip auto-invoke.
     """
     examples = list(macro.meta.get("examples") or [])
     if not examples:
         return {}
 
-    # Determine current page url_template (if parent_ctx supplied).
+    # Pull state from parent_ctx for ranking signals.
     cur_template = ""
+    task_text = ""
     if parent_ctx is not None:
         snapshot = getattr(parent_ctx, "snapshot", None)
         if isinstance(snapshot, dict):
             sig = snapshot.get("signature")
             if isinstance(sig, dict):
                 cur_template = sig.get("url_template", "") or ""
+        task_text = getattr(parent_ctx, "task", "") or ""
 
-    # Phase 1: prefer anchored example whose url_template matches.
-    for ex in examples:
+    expected_param_names = {p.name for p in macro.params}
+    task_hints = _task_extracted_params(task_text, expected_param_names)
+
+    def _params_of(ex: dict) -> dict:
+        if "params" in ex and isinstance(ex.get("params"), dict):
+            return ex["params"]
+        return {k: v for k, v in ex.items() if k != "url_template"}
+
+    def _score(ex) -> int:
+        if not isinstance(ex, dict):
+            return -1
+        params = _params_of(ex)
+        if not params:
+            return -1
+        score = 0
+        for k, v in task_hints.items():
+            if str(params.get(k, "")).lower() == str(v).lower():
+                score += 10
+        if "url_template" in ex:
+            ex_tmpl = ex.get("url_template") or ""
+            if cur_template and ex_tmpl == cur_template:
+                score += 5
+            elif not ex_tmpl:
+                score += 1
+        return score
+
+    ranked = sorted(examples, key=_score, reverse=True)
+    for ex in ranked:
         if not isinstance(ex, dict):
             continue
-        if "params" in ex and "url_template" in ex:
-            if cur_template and ex.get("url_template") == cur_template:
-                return dict(ex.get("params") or {})
-
-    # Phase 2: any anchored example (no template match — first wins).
-    for ex in examples:
-        if isinstance(ex, dict) and "params" in ex:
-            return dict(ex.get("params") or {})
-
-    # Phase 3: legacy flat-dict examples.
-    for ex in examples:
-        if isinstance(ex, dict) and ex:
-            return dict(ex)
+        params = _params_of(ex)
+        if params:
+            return dict(params)
     return {}
 
 
@@ -183,7 +257,16 @@ def act_on_action(ctx: MacroCtx) -> None:
         # immediately afterwards.
         ctx.last_triggered[match.macro_name] = parent_step
 
-        if ctx.mode == "auto":
+        # Auto-mode demotion: if this macro's recorded success_rate
+        # is below the threshold, fall back to suggest mode for it.
+        # Operator-curated catalog gets full auto; flaky / experimental
+        # macros stay in suggest until they prove themselves.
+        effective_mode = ctx.mode
+        if (effective_mode == "auto"
+                and macro.success_rate < ctx.auto_min_success_rate):
+            effective_mode = "suggest"
+
+        if effective_mode == "auto":
             if _has_pending_auto(ctx):
                 continue
             params = _params_from_examples(macro, parent_ctx)
@@ -241,7 +324,14 @@ def act_page_ready(ctx: MacroCtx) -> None:
         ctx.last_triggered[macro.name] = parent_step
         ctx.n_matches += 1
 
-        if ctx.mode == "auto":
+        # S3 demotion: low-confidence macro stays in suggest even when
+        # global mode is auto.
+        effective_mode = ctx.mode
+        if (effective_mode == "auto"
+                and macro.success_rate < ctx.auto_min_success_rate):
+            effective_mode = "suggest"
+
+        if effective_mode == "auto":
             params = _params_from_examples(macro, parent_ctx)
             if not params and any(p.required for p in macro.params):
                 _inject_suggestion(ctx, macro, _PageMatch(macro.name, len(macro.pattern)))
