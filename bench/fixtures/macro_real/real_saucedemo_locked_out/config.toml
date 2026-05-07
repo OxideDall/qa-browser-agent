@@ -1,0 +1,16 @@
+[fixture]
+id       = "real_saucedemo_locked_out"
+category = "macro_real"
+level    = 3
+title    = "saucedemo locked-out user — must catch the error banner"
+
+[run]
+url         = "https://www.saucedemo.com/"
+headless    = true
+max_steps   = 10
+
+[budget]
+max_steps        = 10
+max_tokens       = 25000
+max_wall_seconds = 60
+retries          = 2

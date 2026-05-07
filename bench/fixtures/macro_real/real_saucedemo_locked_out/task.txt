@@ -1,0 +1,13 @@
+Sauce demo. The login screen lists multiple test usernames; one of
+them — `locked_out_user` — is artificially locked. Log in with:
+
+  username: locked_out_user
+  password: secret_sauce
+
+Login will FAIL with an error banner saying the user has been locked
+out. Verify that error banner renders and call done PASS quoting its
+exact text wrapped in double quotes inside your description, e.g.:
+
+  done PASS 'error: "Epic sadface: Sorry, this user has been locked out."'
+
+The double-quoted text is the evidence anchor.

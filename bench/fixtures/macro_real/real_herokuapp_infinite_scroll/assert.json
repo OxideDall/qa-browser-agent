@@ -1,0 +1,6 @@
+{
+  "checks": [
+    {"type": "agent_status", "expected": "PASS"},
+    {"type": "dom_count", "selector": ".jscroll-added", "min": 3}
+  ]
+}

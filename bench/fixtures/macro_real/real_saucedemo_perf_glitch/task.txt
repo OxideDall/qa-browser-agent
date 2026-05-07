@@ -1,0 +1,9 @@
+Sauce demo. Log in as `performance_glitch_user` / `secret_sauce`.
+This account deliberately slows down login and inventory transitions
+by ~5 seconds (artificial backend delay simulating a degraded site).
+
+After login, add the first product to cart and verify the cart icon
+shows badge "1". Be patient — initial click responses take longer
+than usual.
+
+Call done PASS quoting the badge value.

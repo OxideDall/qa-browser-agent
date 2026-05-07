@@ -1,0 +1,16 @@
+[fixture]
+id       = "real_herokuapp_js_alerts"
+category = "macro_real"
+level    = 3
+title    = "click a button that fires a JS alert; verify result text"
+
+[run]
+url         = "https://the-internet.herokuapp.com/javascript_alerts"
+headless    = true
+max_steps   = 8
+
+[budget]
+max_steps        = 8
+max_tokens       = 20000
+max_wall_seconds = 60
+retries          = 2

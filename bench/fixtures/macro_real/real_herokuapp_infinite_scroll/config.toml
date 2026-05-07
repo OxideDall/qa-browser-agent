@@ -1,0 +1,16 @@
+[fixture]
+id       = "real_herokuapp_infinite_scroll"
+category = "macro_real"
+level    = 4
+title    = "scroll an infinite-load page until ≥3 paragraphs render"
+
+[run]
+url         = "https://the-internet.herokuapp.com/infinite_scroll"
+headless    = true
+max_steps   = 12
+
+[budget]
+max_steps        = 12
+max_tokens       = 30000
+max_wall_seconds = 90
+retries          = 2

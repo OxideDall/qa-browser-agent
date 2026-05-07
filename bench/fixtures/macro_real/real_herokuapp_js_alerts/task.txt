@@ -1,0 +1,11 @@
+There are three buttons on this page that fire native JS dialogs:
+"Click for JS Alert", "Click for JS Confirm", "Click for JS Prompt".
+
+Playwright auto-accepts dialogs by default; after the JS Alert
+button is clicked and the dialog dismissed, the page sets a result
+text in the `#result` paragraph: "You successfully clicked an alert".
+
+Click the JS Alert button and call done PASS quoting that result
+text in double quotes inside your description, e.g.:
+
+  done PASS 'result: "You successfully clicked an alert"'

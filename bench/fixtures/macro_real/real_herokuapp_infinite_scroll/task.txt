@@ -1,0 +1,10 @@
+This page renders a single paragraph of Latin text initially, then
+loads more paragraphs each time you scroll near the bottom. Scroll
+the page down a few times until at least 3 paragraphs are present
+on the page.
+
+Each paragraph is in a `<div class="jscroll-added">` element. You can
+verify by running `evaluate document.querySelectorAll('.jscroll-added').length`
+— that should reach 3 (or more) before you call done PASS.
+
+Call done PASS quoting the count, e.g.: done PASS 'jscroll-added: "3"'

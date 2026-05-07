@@ -1,0 +1,7 @@
+{
+  "checks": [
+    {"type": "agent_status", "expected": "PASS"},
+    {"type": "url_equals", "value": "https://www.saucedemo.com/"},
+    {"type": "dom_text_contains", "selector": "h3[data-test='error']", "value": "locked out"}
+  ]
+}

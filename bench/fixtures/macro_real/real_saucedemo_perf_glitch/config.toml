@@ -1,0 +1,16 @@
+[fixture]
+id       = "real_saucedemo_perf_glitch"
+category = "macro_real"
+level    = 4
+title    = "saucedemo performance_glitch_user — slow login + cart"
+
+[run]
+url         = "https://www.saucedemo.com/"
+headless    = true
+max_steps   = 18
+
+[budget]
+max_steps        = 18
+max_tokens       = 50000
+max_wall_seconds = 180
+retries          = 2
