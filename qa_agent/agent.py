@@ -337,6 +337,16 @@ evaluate <jsExpr> — run JS in page; result returned as text. PREFER this over
                       evaluate document.querySelectorAll('.alert-row').length
                       evaluate window.__APP_STATE__?.userId ?? null
                     For multi-statement use: evaluate (()=>{ /* ... */; return x; })()
+macro <name> [k=v]... — invoke a saved skill from the macro library.
+                    Used to skip repeating known sub-flows (login, search,
+                    add-to-cart, etc.) — the runtime will execute the macro's
+                    pre-recorded steps inline and report success/failure.
+                    Example:
+                      macro login_with_credentials username=tomsmith password=SuperSecretPassword!
+                    When the runtime injects a [MACRO HINT] line in your user
+                    message, that's a precondition-matched suggestion: USE IT
+                    to save turns. The hint includes the exact invocation form
+                    with example params; just copy it as your next action.
 done PASS|FAIL "why"
 
 ## Rules
